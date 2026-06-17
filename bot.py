@@ -1,14 +1,18 @@
 import telebot
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 from datetime import datetime, timedelta
 import os
 import json
+from fpdf import FPDF
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # Ambil kredensial dari Environment Variables Railway
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 SHEET_ID = os.environ.get('SHEET_ID')
+FOLDER_ID = os.environ.get('FOLDER_ID') # ID Folder Google Drive untuk simpan Invoice
 CREDS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 MY_CHAT_IDS_STR = os.environ.get('MY_CHAT_ID', '') 
 
@@ -17,9 +21,12 @@ CHAT_ID_LIST = [cid.strip() for cid in MY_CHAT_IDS_STR.split(',') if cid.strip()
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Setup koneksi ke Google Sheets
+# Setup koneksi ke Google Workspace (Sheets & Drive)
 creds_dict = json.loads(CREDS_JSON)
-scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive" # Ditambahkan akses Drive
+]
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 
@@ -93,9 +100,10 @@ def send_welcome(message):
         "5. /batalposting DD/MM/YYYY\n"
         "6. /jadwalvisit - Lihat jadwal visit\n"
         "7. /jadwalposting - Lihat antrean konten\n"
-        "8. /ratecard - Template harga & penawaran paket\n"
-        "9. /sk - Template Syarat & Ketentuan kerja sama\n\n"
-        "📢 *Fitur Aktif:* Reminder otomatis H-1 setiap 20:00 WIB."
+        "8. /ratecard - Template harga paket\n"
+        "9. /sk - Template Syarat & Ketentuan\n"
+        "10. /invoice Nama Resto - Nama Paket - Harga\n"
+        "    (Contoh: /invoice Ketan Mansour - Paket Gacor - 800000)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -137,22 +145,136 @@ def send_sk(message):
         "📝 *TEMPLATE SYARAT & KETENTUAN (S&K) KERJA SAMA*\n\n"
         "Untuk menjaga kenyamanan dan profesionalisme proses produksi konten, berikut adalah S&K yang berlaku:\n\n"
         "1️⃣ *Proses Liputan & Konsumsi*\n"
-        "• Pihak resto menyediakan menu andalan yang akan di-review secara gratis (di luar biaya paket Rate Card).\n"
-        "• Proses syuting memakan waktu sekitar 1-2 jam. Mohon kondisikan area meja/resto agar nyaman untuk pengambilan visual.\n\n"
+        "• Pihak resto menyediakan menu andalan yang akan di-review secara gratis.\n"
+        "• Proses syuting memakan waktu sekitar 1-2 jam.\n\n"
         "2️⃣ *Sistem Pembayaran (Payment)*\n"
-        "• Down Payment (DP) sebesar 50% wajib dibayarkan maksimal H-3 sebelum jadwal visit untuk mengunci slot kalender liputan.\n"
+        "• Down Payment (DP) sebesar 50% wajib dibayarkan maksimal H-3 sebelum jadwal visit untuk mengunci slot.\n"
         "• Pelunasan sisa 50% dilakukan maksimal H-1 sebelum video resmi ditayangkan (upload).\n\n"
         "3️⃣ *Reschedule & Pembatalan*\n"
-        "• Perubahan jadwal (reschedule) visit hanya diperbolehkan maksimal 1x, dan wajib diinfokan paling lambat H-2 sebelum hari liputan.\n"
-        "• Jika pihak klien membatalkan kerja sama sepihak setelah DP dibayarkan, maka DP dianggap hangus.\n\n"
+        "• Perubahan jadwal visit wajib diinfokan paling lambat H-2 sebelum hari liputan.\n"
+        "• Jika pihak klien membatalkan kerja sama sepihak, maka DP dianggap hangus.\n\n"
         "4️⃣ *Kebijakan Revisi Video*\n"
-        "• Klien berhak mendapatkan revisi video maksimal 1x (revisi minor seperti salah info harga, teks, atau penulisan nama).\n"
-        "• Revisi tidak berlaku untuk perombakan total konsep video atau pengambilan ulang (re-take) video di lokasi.\n\n"
+        "• Klien berhak mendapatkan revisi video maksimal 1x (revisi minor seperti salah info harga, teks, atau penulisan nama).\n\n"
         "5️⃣ *Hak Cipta & Penggunaan Video*\n"
         "• Hak cipta video sepenuhnya milik creator. Konten akan ditayangkan secara permanen di akun creator.\n"
-        "• Klien dilarang mengunggah ulang (re-upload) video utuh ke akun brand/resto tanpa membeli opsi *Owning Content*. Klien diperbolehkan membagikan video lewat fitur resmi (Share/Remix/Duet)."
+        "• Klien dilarang mengunggah ulang (re-upload) video utuh tanpa membeli opsi *Owning Content*."
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['invoice'])
+def generate_invoice(message):
+    try:
+        # Ambil teks setelah perintah /invoice
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or '-' not in parts[1]:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Nama Paket - Harga\n\nContoh: /invoice Ketan Mansour - Paket Gacor - 800000")
+            return
+        
+        # Pecah parameter berdasarkan tanda strip (-)
+        subparts = parts[1].split('-')
+        if len(subparts) < 3:
+            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama Resto, Paket, dan Harga yang dipisah dengan tanda strip.")
+            return
+
+        resto = subparts[0].strip()
+        paket = subparts[1].strip()
+        harga_str = subparts[2].strip().replace('.', '').replace('Rp', '').strip()
+        
+        harga = int(harga_str)
+        dp_harga = int(harga * 0.5)
+        
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        no_inv = f"INV/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)}"
+        
+        pdf_filename = f"Invoice_{resto.replace(' ', '_')}.pdf"
+        
+        # --- PROSES PEMBUATAN PDF (fpdf2) ---
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Desain Header Invoice
+        pdf.set_font("helvetica", "B", 20)
+        pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True, align="C")
+        pdf.set_font("helvetica", "", 10)
+        pdf.cell(0, 6, "Digital Content Creator & Food Vlogger", ln=True, align="C")
+        pdf.ln(10)
+        
+        # Informasi Utama Invoice
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(40, 6, "No. Invoice", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 6, f": {no_inv}", ln=True)
+        
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(40, 6, "Tanggal", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 6, f": {tgl_sekarang}", ln=True)
+        
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(40, 6, "Klien / Resto", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 6, f": {resto}", ln=True)
+        pdf.ln(8)
+        
+        # Tabel Rincian Harga
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(110, 8, "Deskripsi Paket Kerja Sama", 1, 0, "C")
+        pdf.cell(80, 8, "Total Biaya (IDR)", 1, 1, "C")
+        
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(110, 10, f"Review Kuliner - {paket}", 1, 0, "L")
+        pdf.cell(80, 10, f"Rp {harga:,.0f}", 1, 1, "R")
+        pdf.ln(5)
+        
+        # Informasi Down Payment
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(110, 8, "Down Payment (DP 50% untuk Kunci Jadwal):", 0, 0, "R")
+        pdf.cell(80, 8, f"Rp {dp_harga:,.0f}", 0, 1, "R")
+        pdf.ln(10)
+        
+        # Ketentuan Pembayaran
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
+        pdf.set_font("helvetica", "", 10)
+        pdf.cell(0, 5, "• Bank BCA: [Isi No Rekening Kamu]", ln=True)
+        pdf.cell(0, 5, "• Atas Nama: [Isi Nama Kamu]", ln=True)
+        pdf.ln(10)
+        
+        pdf.set_font("helvetica", "I", 9)
+        pdf.cell(0, 5, "*Catatan: Harap kirimkan bukti transfer jika sudah melakukan pembayaran DP.", ln=True, align="C")
+        
+        # Simpan file secara lokal sementara di hosting Railway
+        pdf.output(pdf_filename)
+        
+        # --- PROSES UPLOAD KE GOOGLE DRIVE ---
+        bot.reply_to(message, "⏳ Sedang memproses pembuatan PDF dan mengunggah ke Google Drive...")
+        
+        drive_service = build('drive', 'v3', credentials=creds)
+        file_metadata = {
+            'name': f"Invoice_{resto}_{datetime.now().strftime('%d-%m-%Y')}.pdf",
+            'parents': [FOLDER_ID] if FOLDER_ID else []
+        }
+        media = MediaFileUpload(pdf_filename, mimetype='application/pdf')
+        
+        uploaded_file = drive_service.files().create(
+            body=file_metadata, 
+            media_body=media, 
+            fields='id, webViewLink'
+        ).execute()
+        
+        drive_link = uploaded_file.get('webViewLink')
+        
+        # Hapus file lokal setelah berhasil diunggah agar hemat penyimpanan container
+        if os.path.exists(pdf_filename):
+            os.remove(pdf_filename)
+            
+        # Balas ke user dengan link file Drive
+        bot.reply_to(message, f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n📂 *Link Google Drive:*\n{drive_link}", parse_mode='Markdown')
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Kesalahan input harga. Pastikan menulis angka harga dengan benar tanpa simbol mata uang.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['tambahvisit'])
 def add_visit(message):
