@@ -164,13 +164,11 @@ def send_sk(message):
 @bot.message_handler(commands=['invoice'])
 def generate_invoice(message):
     try:
-        # Ambil teks setelah perintah /invoice
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
             bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Nama Paket - Harga\n\nContoh: /invoice Ketan Mansour - Paket Gacor - 800000")
             return
         
-        # Pecah parameter berdasarkan tanda strip (-)
         subparts = parts[1].split('-')
         if len(subparts) < 3:
             bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama Resto, Paket, dan Harga yang dipisah dengan tanda strip.")
@@ -232,18 +230,18 @@ def generate_invoice(message):
         pdf.cell(80, 8, f"Rp {dp_harga:,.0f}", 0, 1, "R")
         pdf.ln(10)
         
-        # Ketentuan Pembayaran
+        # Ketentuan Pembayaran (Ganti tanda peluru dengan tanda strip agar fpdf tidak error)
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
         pdf.set_font("helvetica", "", 10)
-        pdf.cell(0, 5, "• Bank BCA: [Isi No Rekening Kamu]", ln=True)
-        pdf.cell(0, 5, "• Atas Nama: [Isi Nama Kamu]", ln=True)
+        pdf.cell(0, 5, "- Bank BCA: [Isi No Rekening Kamu]", ln=True)
+        pdf.cell(0, 5, "- Atas Nama: [Isi Nama Kamu]", ln=True)
         pdf.ln(10)
         
         pdf.set_font("helvetica", "I", 9)
         pdf.cell(0, 5, "*Catatan: Harap kirimkan bukti transfer jika sudah melakukan pembayaran DP.", ln=True, align="C")
         
-        # Simpan file secara lokal sementara di hosting Railway
+        # Simpan file
         pdf.output(pdf_filename)
         
         # --- PROSES UPLOAD KE GOOGLE DRIVE ---
@@ -264,11 +262,9 @@ def generate_invoice(message):
         
         drive_link = uploaded_file.get('webViewLink')
         
-        # Hapus file lokal setelah berhasil diunggah agar hemat penyimpanan container
         if os.path.exists(pdf_filename):
             os.remove(pdf_filename)
             
-        # Balas ke user dengan link file Drive
         bot.reply_to(message, f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n📂 *Link Google Drive:*\n{drive_link}", parse_mode='Markdown')
 
     except ValueError:
