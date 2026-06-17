@@ -33,7 +33,7 @@ def safe_date_parse(date_str):
     except:
         return datetime.min
 
-# Fungsi Reminder
+# Fungsi Reminder H-1
 def kirim_reminder_h1():
     try:
         if not CHAT_ID_LIST:
@@ -76,7 +76,7 @@ def kirim_reminder_h1():
     except Exception as e:
         print(f"Gagal memproses fungsi reminder: {str(e)}")
 
-# Setup Scheduler di background
+# Setup Scheduler
 scheduler = BackgroundScheduler(timezone="Asia/Jakarta") 
 scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
 scheduler.start()
@@ -100,29 +100,32 @@ def send_welcome(message):
 
 @bot.message_handler(commands=['ratecard'])
 def send_ratecard(message):
-    # KAMU BISA MENGUBAH TEKS DAN HARGA DI BAWAH INI SESUAI KEBUTUHANMU
     teks = (
         "📄 *TEMPLATE RATE CARD & KERJA SAMA*\n\n"
-        "Halo! Terima kasih atas ketertarikannya bekerja sama. "
-        "Berikut adalah penawaran paket liputan kuliner/review untuk brand Anda:\n\n"
+        "Halo! Terima kasih atas ketertarikannya bekerja sama. Berikut adalah penawaran paket liputan kuliner/review:\n\n"
         "📦 *PAKET REGULER (Review Standar)*\n"
         "• 1x Visit & Liputan Resto\n"
         "• 1x Video tayang di TikTok & IG Reels\n"
-        "• Free Collab Instagram\n"
+        "• ✨ *FREE Collab on Instagram*\n"
         "• Keep video permanent\n"
         "• Harga: Rp 500.000\n\n"
         "🚀 *PAKET GACOR (Grand Opening / Event)*\n"
         "• 1x Visit & Liputan Prioritas\n"
-        "• 1x Video (TikTok & IG Reels)\n"
-        "• Free Collab Instagram\n"
+        "• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi\n"
+        "• ✨ *FREE Collab on Instagram*\n"
         "• Prioritas jadwal upload\n"
-        "• Keep video permanent\n"
         "• Harga: Rp 800.000\n\n"
+        "➕ *ADDITIONAL MENU*\n"
+        "• *Owning Content (Hak Milik Video):*\n"
+        "  - Kualitas 2K: +Rp 200.000\n"
+        "  - Kualitas 4K: +Rp 300.000\n"
+        "• *Additional Story (Instagram):*\n"
+        "  - 1x Story: +Rp 30.000\n"
+        "  - 2x Story: +Rp 50.000\n\n"
         "📌 *Catatan:*\n"
-        "• Harga di atas berlaku untuk wilayah Bogor dan sekitarnya.\n"
-        "• Luar Bogor akan dikenakan tambahan biaya transport.\n"
+        "• Harga berlaku untuk wilayah Bogor & sekitarnya.\n"
         "• Pembayaran DP 50% wajib dilakukan untuk mengunci jadwal visit.\n\n"
-        "Silakan balas pesan ini jika ada paket yang sesuai atau jika ingin berdiskusi lebih lanjut! 🙏"
+        "Silakan balas pesan ini jika ada paket yang sesuai atau ingin berdiskusi lebih lanjut! 🙏"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
