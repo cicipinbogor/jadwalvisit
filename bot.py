@@ -176,74 +176,103 @@ def generate_invoice(message):
         dp_harga = int(harga * 0.5)
         
         tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
-        no_inv = f"INV/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)}"
+        no_inv = f"INV/CCPN/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
         
         pdf_filename = f"Invoice_{resto.replace(' ', '_')}.pdf"
         
-        # --- PROSES PEMBUATAN PDF (fpdf2) ---
+        # --- PROSES PEMBUATAN PDF (fpdf2) DESAIN PROFESIONAL ---
         pdf = FPDF()
         pdf.add_page()
         
-        # Desain Header Invoice
-        pdf.set_font("helvetica", "B", 20)
-        pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True, align="C")
+        # --- HEADER ---
+        # Cek apakah file logo.png ada di folder
+        if os.path.exists("logo.png"):
+            pdf.image("logo.png", x=10, y=10, w=30)
+            pdf.set_xy(45, 12)
+        else:
+            pdf.set_xy(10, 12)
+            
+        pdf.set_font("helvetica", "B", 24)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 8, "Cicipin Bogor", ln=True)
+        
+        if os.path.exists("logo.png"):
+            pdf.set_x(45)
+            
         pdf.set_font("helvetica", "", 10)
-        pdf.cell(0, 6, "Digital Content Creator & Food Vlogger", ln=True, align="C")
-        pdf.ln(10)
+        pdf.set_text_color(100, 100, 100) # Warna abu-abu elegan
+        pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
         
-        # Informasi Utama Invoice
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(40, 6, "No. Invoice", 0, 0)
-        pdf.set_font("helvetica", "", 11)
-        pdf.cell(0, 6, f": {no_inv}", ln=True)
-        
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(40, 6, "Tanggal", 0, 0)
-        pdf.set_font("helvetica", "", 11)
-        pdf.cell(0, 6, f": {tgl_sekarang}", ln=True)
-        
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(40, 6, "Klien / Resto", 0, 0)
-        pdf.set_font("helvetica", "", 11)
-        pdf.cell(0, 6, f": {resto}", ln=True)
-        pdf.ln(8)
-        
-        # Tabel Rincian Harga
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(110, 8, "Deskripsi Paket Kerja Sama", 1, 0, "C")
-        pdf.cell(80, 8, "Total Biaya (IDR)", 1, 1, "C")
-        
-        pdf.set_font("helvetica", "", 11)
-        pdf.cell(110, 10, f"Review Kuliner - {paket}", 1, 0, "L")
-        pdf.cell(80, 10, f"Rp {harga:,.0f}", 1, 1, "R")
+        # Garis pemisah header
         pdf.ln(5)
-        
-        # Informasi Down Payment
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(110, 8, "Down Payment (DP 50% untuk Kunci Jadwal):", 0, 0, "R")
-        pdf.cell(80, 8, f"Rp {dp_harga:,.0f}", 0, 1, "R")
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(10)
         
-        # Ketentuan Pembayaran
+        # --- INVOICE TITLE & INFO ---
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("helvetica", "B", 18)
+        pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True)
+        pdf.ln(2)
+        
         pdf.set_font("helvetica", "B", 10)
-        pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
+        pdf.cell(30, 6, "No. Invoice", 0, 0)
         pdf.set_font("helvetica", "", 10)
-        pdf.cell(0, 5, "- Bank BCA: [Isi No Rekening Kamu]", ln=True)
-        pdf.cell(0, 5, "- Atas Nama: [Isi Nama Kamu]", ln=True)
+        pdf.cell(60, 6, f": {no_inv}", 0, 0)
+        
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(30, 6, "Klien / Resto", 0, 0)
+        pdf.set_font("helvetica", "", 10)
+        pdf.cell(0, 6, f": {resto}", ln=True)
+        
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(30, 6, "Tanggal", 0, 0)
+        pdf.set_font("helvetica", "", 10)
+        pdf.cell(60, 6, f": {tgl_sekarang}", 0, 1)
         pdf.ln(10)
         
+        # --- TABEL RINCIAN HARGA ---
+        pdf.set_font("helvetica", "B", 11)
+        pdf.set_fill_color(240, 240, 240) # Latar belakang header tabel
+        pdf.set_draw_color(180, 180, 180)
+        pdf.cell(120, 10, "Deskripsi Paket Kerja Sama", border=1, align="C", fill=True)
+        pdf.cell(70, 10, "Total Biaya (IDR)", border=1, ln=True, align="C", fill=True)
+        
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(120, 12, f" Review Kuliner - {paket}", border=1, align="L")
+        pdf.cell(70, 12, f"Rp {harga:,.0f}", border=1, ln=True, align="R")
+        
+        # Baris DP
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
+        pdf.cell(70, 10, f"Rp {dp_harga:,.0f}", border=1, ln=True, align="R")
+        pdf.ln(15)
+        
+        # --- INFORMASI PEMBAYARAN ---
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
+        
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 6, "- Bank: Seabank", ln=True)
+        pdf.cell(0, 6, "- No. Rekening: 901177950990", ln=True)
+        pdf.cell(0, 6, "- Atas Nama: Afrizal", ln=True)
+        pdf.ln(15)
+        
+        # --- FOOTER ---
         pdf.set_font("helvetica", "I", 9)
-        pdf.cell(0, 5, "*Catatan: Harap kirimkan bukti transfer jika sudah melakukan pembayaran DP.", ln=True, align="C")
+        pdf.set_text_color(150, 150, 150)
+        pdf.cell(0, 5, "*Mohon kirimkan bukti transfer jika pembayaran DP telah dilakukan.", ln=True, align="C")
+        pdf.cell(0, 5, "Terima kasih atas kepercayaan Anda bekerja sama dengan Cicipin Bogor!", ln=True, align="C")
         
         # Simpan file
         pdf.output(pdf_filename)
         
         # --- PROSES KIRIM PDF LANGSUNG KE TELEGRAM ---
-        bot.reply_to(message, "⏳ Sedang memproses pembuatan PDF...")
+        bot.reply_to(message, "⏳ Sedang memproses pembuatan Invoice Profesional...")
         
         # Kirim file sebagai dokumen ke chat
         with open(pdf_filename, 'rb') as pdf_file:
-            caption_text = f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n_File PDF di atas bisa langsung kamu teruskan (forward) ke pihak resto._"
+            caption_text = f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n_File PDF Cicipin Bogor di atas bisa langsung kamu forward ke klien._"
             bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
         
         # Hapus file dari server setelah sukses terkirim
