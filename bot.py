@@ -37,7 +37,7 @@ def send_welcome(message):
 @bot.message_handler(commands=['tambahvisit'])
 def add_visit(message):
     try:
-        # Pisahkan pesan menjadi maksimal 4 bagian: command, tanggal, jam, resto
+        # Pisahkan pesan menjadi maksimal 4 bagian
         parts = message.text.split(maxsplit=3)
         if len(parts) < 4:
             bot.reply_to(message, "⚠️ Format salah. Gunakan: /tambahvisit YYYY-MM-DD HH:MM Nama Resto")
@@ -62,21 +62,36 @@ def add_visit(message):
         # Simpan Jadwal Visit
         visit_ws.append_row([date_str, time_str, resto_name])
 
-        # Logika Penjadwalan Posting Otomatis (H+1 atau hari kosong berikutnya)
+        # Logika Penjadwalan Posting Otomatis (Mengikuti urutan postingan paling terakhir)
         visit_date = datetime.strptime(date_str, "%Y-%m-%d")
-        post_date = visit_date + timedelta(days=1)
-
         posts = post_ws.get_all_records()
-        existing_post_dates = [str(p.get('TanggalPosting', '')) for p in posts]
+        
+        post_dates = []
+        for p in posts:
+            p_date_str = str(p.get('TanggalPosting', '')).strip()
+            # Abaikan baris kosong atau baris dummy pancingan
+            if p_date_str and p_date_str.lower() != 'dummy':
+                try:
+                    p_date = datetime.strptime(p_date_str, "%Y-%m-%d")
+                    post_dates.append(p_date)
+                except ValueError:
+                    continue
 
-        # Cari slot hari kosong untuk posting
-        while post_date.strftime("%Y-%m-%d") in existing_post_dates:
-            post_date += timedelta(days=1)
+        if post_dates:
+            # Cari tanggal postingan yang berada di paling ujung antrean
+            latest_post_date = max(post_dates)
+            # Jadwal baru adalah H+1 dari postingan terakhir.
+            # Menggunakan fungsi max() agar jika antrean lama sudah lewat berbulan-bulan lalu, 
+            # jadwal posting baru tidak ikut backdate (mundur), melainkan mulai dari H+1 tanggal visit sekarang.
+            post_date = max(latest_post_date + timedelta(days=1), visit_date + timedelta(days=1))
+        else:
+            # Jika antrean postingan benar-benar kosong, mulai dari H+1 tanggal visit
+            post_date = visit_date + timedelta(days=1)
 
         post_date_str = post_date.strftime("%Y-%m-%d")
         post_ws.append_row([post_date_str, resto_name])
 
-        bot.reply_to(message, f"✅ Berhasil!\n\n🎥 Visit {resto_name} dijadwalkan pada {date_str} {time_str}.\n🗓 Jadwal posting otomatis masuk ke tanggal {post_date_str}.")
+        bot.reply_to(message, f"✅ Berhasil!\n\n🎥 Visit {resto_name} dijadwalkan pada {date_str} {time_str}.\n🗓 Jadwal posting otomatis masuk antrean tanggal {post_date_str}.")
 
     except ValueError:
         bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan YYYY-MM-DD dan HH:MM.")
@@ -92,12 +107,10 @@ def list_visit(message):
             return
         
         reply = "📌 List Jadwal Visit:\n\n"
-        # Urutkan berdasarkan tanggal lalu jam, diubah ke string untuk mencegah error tipe data
         for v in sorted(visits, key=lambda x: (str(x.get('Tanggal', '')), str(x.get('Jam', '')))):
-            if v.get('Tanggal') and v.get('Resto'): # Pastikan baris tidak kosong
+            if v.get('Tanggal') and str(v.get('Resto', '')).lower() != 'dummy':
                 reply += f"• {v['Tanggal']} | {v['Jam']} - {v['Resto']}\n"
         
-        # Cek jika tidak ada isinya selain header
         if reply == "📌 List Jadwal Visit:\n\n":
             bot.reply_to(message, "Belum ada jadwal visit yang terdaftar.")
         else:
@@ -115,12 +128,10 @@ def list_posting(message):
             return
         
         reply = "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n"
-        # Urutkan berdasarkan tanggal posting, diubah ke string
         for p in sorted(posts, key=lambda x: str(x.get('TanggalPosting', ''))):
-            if p.get('TanggalPosting') and p.get('Resto'): # Pastikan baris tidak kosong
+            if p.get('TanggalPosting') and str(p.get('Resto', '')).lower() != 'dummy':
                 reply += f"• {p['TanggalPosting']} - Konten: {p['Resto']}\n"
         
-        # Cek jika tidak ada isinya selain header
         if reply == "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n":
             bot.reply_to(message, "Belum ada antrean jadwal posting.")
         else:
