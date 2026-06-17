@@ -187,7 +187,8 @@ def generate_invoice(message):
         # --- HEADER ---
         # Cek apakah file logo.png ada di folder
         if os.path.exists("logo.png"):
-            pdf.image("logo.png", x=10, y=10, w=30)
+            # Koordinat y ditarik ke atas (y=2) dan ukuran sedikit diperbesar (w=32)
+            pdf.image("logo.png", x=10, y=2, w=32)
             pdf.set_xy(45, 12)
         else:
             pdf.set_xy(10, 12)
@@ -488,7 +489,7 @@ def cancel_posting(message):
         bot.reply_to(message, f"🗑 Jadwal posting untuk {resto_name} pada tanggal {post_date} berhasil dibatalkan.")
 
     except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
+        bot.reply_to(message, "⚠️ Format salah. Pastikan menggunakan DD/MM/YYYY.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
