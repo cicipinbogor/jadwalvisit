@@ -22,6 +22,7 @@ sheet = client.open_by_key(SHEET_ID)
 visit_ws = sheet.worksheet('Visit')
 post_ws = sheet.worksheet('Posting')
 
+# Fungsi khusus agar format DD/MM/YYYY tetap bisa diurutkan (sorting) dengan benar
 def safe_date_parse(date_str):
     try:
         return datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
@@ -36,8 +37,10 @@ def send_welcome(message):
         "1. /tambahvisit DD/MM/YYYY HH:MM Nama Resto\n"
         "2. /editvisit TglLama JamLama TglBaru JamBaru NamaResto\n"
         "3. /editposting TglPosting NamaRestoBaru\n"
-        "4. /jadwalvisit - Lihat jadwal visit\n"
-        "5. /jadwalposting - Lihat antrean konten"
+        "4. /batalvisit DD/MM/YYYY HH:MM - Batalkan jadwal visit\n"
+        "5. /batalposting DD/MM/YYYY - Batalkan jadwal posting\n"
+        "6. /jadwalvisit - Lihat jadwal visit\n"
+        "7. /jadwalposting - Lihat antrean konten"
     )
     bot.reply_to(message, teks)
 
@@ -49,7 +52,6 @@ def add_visit(message):
             bot.reply_to(message, "⚠️ Format salah. Gunakan: /tambahvisit DD/MM/YYYY HH:MM Nama Resto\nContoh: /tambahvisit 16/06/2026 14:00 Ketan Mansour")
             return
 
-        # Otomatis ubah tanda strip menjadi garis miring
         date_str = parts[1].replace('-', '/')
         time_str = parts[2]
         resto_name = parts[3]
@@ -100,10 +102,9 @@ def add_visit(message):
 @bot.message_handler(commands=['editvisit'])
 def edit_visit(message):
     try:
-        # Format: /editvisit TglLama JamLama TglBaru JamBaru RestoBaru
         parts = message.text.split(maxsplit=5)
         if len(parts) < 6:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/editvisit TglLama JamLama TglBaru JamBaru Nama Resto\nContoh: /editvisit 16/06/2026 14:00 17/06/2026 15:00 Sate Maranggi Bogor")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/editvisit TglLama JamLama TglBaru JamBaru Nama Resto")
             return
 
         old_date = parts[1].replace('-', '/')
@@ -112,13 +113,11 @@ def edit_visit(message):
         new_time = parts[4]
         new_resto = parts[5]
 
-        # Validasi format tanggal dan jam baru
         datetime.strptime(new_date, "%d/%m/%Y")
         datetime.strptime(new_time, "%H:%M")
 
         visits = visit_ws.get_all_records()
         
-        # Cari baris yang akan diedit (start=2 karena baris 1 adalah header)
         row_to_edit = None
         for idx, v in enumerate(visits, start=2):
             if str(v.get('Tanggal', '')).strip() == old_date and str(v.get('Jam', '')).strip() == old_time:
@@ -126,14 +125,12 @@ def edit_visit(message):
                 break
         
         if not row_to_edit:
-            bot.reply_to(message, f"❌ Jadwal visit lama pada {old_date} jam {old_time} tidak ditemukan di database.")
+            bot.reply_to(message, f"❌ Jadwal visit lama pada {old_date} jam {old_time} tidak ditemukan.")
             return
 
-        # Singkirkan jadwal lama dari pengecekan agar tidak bentrok dengan dirinya sendiri
         other_visits = [v for v in visits if not (str(v.get('Tanggal', '')).strip() == old_date and str(v.get('Jam', '')).strip() == old_time)]
         daily_visits_new = [v for v in other_visits if str(v.get('Tanggal', '')).strip() == new_date]
 
-        # Cek kuota dan bentrok untuk jadwal yang baru
         if len(daily_visits_new) >= 3:
             bot.reply_to(message, f"❌ Kuota visit tanggal {new_date} sudah penuh (Maks 3).")
             return
@@ -142,7 +139,6 @@ def edit_visit(message):
             bot.reply_to(message, f"❌ Jadwal jam {new_time} pada {new_date} sudah terisi. Jam tidak boleh bentrok!")
             return
 
-        # Update data di Google Sheets
         visit_ws.update_cell(row_to_edit, 1, new_date)
         visit_ws.update_cell(row_to_edit, 2, new_time)
         visit_ws.update_cell(row_to_edit, 3, new_resto)
@@ -157,21 +153,18 @@ def edit_visit(message):
 @bot.message_handler(commands=['editposting'])
 def edit_posting(message):
     try:
-        # Format: /editposting TglPosting RestoBaru
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/editposting TglPosting Nama Resto Baru\nContoh: /editposting 17/06/2026 Konten Bakmi")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/editposting TglPosting Nama Resto Baru")
             return
 
         post_date = parts[1].replace('-', '/')
         new_resto = parts[2]
 
-        # Validasi format tanggal
         datetime.strptime(post_date, "%d/%m/%Y")
 
         posts = post_ws.get_all_records()
         
-        # Cari baris yang akan diedit
         row_to_edit = None
         for idx, p in enumerate(posts, start=2):
             if str(p.get('TanggalPosting', '')).strip() == post_date:
@@ -179,13 +172,87 @@ def edit_posting(message):
                 break
         
         if not row_to_edit:
-            bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan di database.")
+            bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan.")
             return
 
-        # Update kolom Resto (Kolom ke-2)
         post_ws.update_cell(row_to_edit, 2, new_resto)
-
         bot.reply_to(message, f"✅ Jadwal posting tanggal {post_date} berhasil diubah menjadi: 🎥 {new_resto}")
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['batalvisit'])
+def cancel_visit(message):
+    try:
+        # Format: /batalvisit DD/MM/YYYY HH:MM
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/batalvisit DD/MM/YYYY HH:MM\nContoh: /batalvisit 16/06/2026 14:00")
+            return
+
+        date_str = parts[1].replace('-', '/')
+        time_str = parts[2]
+
+        # Validasi format
+        datetime.strptime(date_str, "%d/%m/%Y")
+        datetime.strptime(time_str, "%H:%M")
+
+        visits = visit_ws.get_all_records()
+        row_to_delete = None
+        resto_name = ""
+
+        # Cari baris data yang cocok
+        for idx, v in enumerate(visits, start=2):
+            if str(v.get('Tanggal', '')).strip() == date_str and str(v.get('Jam', '')).strip() == time_str:
+                row_to_delete = idx
+                resto_name = v.get('Resto', '')
+                break
+
+        if not row_to_delete:
+            bot.reply_to(message, f"❌ Jadwal visit pada {date_str} jam {time_str} tidak ditemukan.")
+            return
+
+        # Hapus baris dari Google Sheets
+        visit_ws.delete_rows(row_to_delete)
+        bot.reply_to(message, f"🗑 Jadwal visit ke {resto_name} pada {date_str} jam {time_str} berhasil dibatalkan dan dihapus dari database.")
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['batalposting'])
+def cancel_posting(message):
+    try:
+        # Format: /batalposting DD/MM/YYYY
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/batalposting DD/MM/YYYY\nContoh: /batalposting 17/06/2026")
+            return
+
+        post_date = parts[1].replace('-', '/')
+        datetime.strptime(post_date, "%d/%m/%Y")
+
+        posts = post_ws.get_all_records()
+        row_to_delete = None
+        resto_name = ""
+
+        # Cari baris data yang cocok
+        for idx, p in enumerate(posts, start=2):
+            if str(p.get('TanggalPosting', '')).strip() == post_date:
+                row_to_delete = idx
+                resto_name = p.get('Resto', '')
+                break
+
+        if not row_to_delete:
+            bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan.")
+            return
+
+        # Hapus baris dari Google Sheets
+        post_ws.delete_rows(row_to_delete)
+        bot.reply_to(message, f"🗑 Jadwal posting untuk {resto_name} pada tanggal {post_date} berhasil dibatalkan dan dihapus dari antrean.")
 
     except ValueError:
         bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
