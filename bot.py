@@ -96,8 +96,8 @@ def send_welcome(message):
         "7. /jadwalposting - Lihat antrean konten\n"
         "8. /ratecard - Template harga paket\n"
         "9. /sk - Template Syarat & Ketentuan\n"
-        "10. /invoice Nama Resto - Nama Paket - Harga\n"
-        "    (Contoh: /invoice Ketan Mansour - Paket Gacor - 800000)"
+        "10. /invoice Nama Resto - Item1=Harga, Item2=Harga\n"
+        "    (Contoh: /invoice Kopi Daun - Pkt Gacor=800000, Owning 2K=200000)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -160,20 +160,27 @@ def generate_invoice(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Nama Paket - Harga\n\nContoh: /invoice Ketan Mansour - Paket Gacor - 800000")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Item1=Harga1, Item2=Harga2\n\nContoh:\n/invoice Brano Pizzeria - Pkt Gacor=800000, 2x Story=50000")
             return
         
-        subparts = parts[1].split('-')
-        if len(subparts) < 3:
-            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama Resto, Paket, dan Harga yang dipisah dengan tanda strip.")
-            return
-
-        resto = subparts[0].strip()
-        paket = subparts[1].strip()
-        harga_str = subparts[2].strip().replace('.', '').replace('Rp', '').strip()
+        main_parts = parts[1].split('-', 1)
+        resto = main_parts[0].strip()
+        items_raw = main_parts[1].split(',')
         
-        harga = int(harga_str)
-        dp_harga = int(harga * 0.5)
+        parsed_items = []
+        total_harga = 0
+        
+        for item in items_raw:
+            if '=' not in item:
+                bot.reply_to(message, f"⚠️ Format salah pada item: '{item.strip()}'. Pastikan pakai tanda '=' untuk memisahkan nama item dan harganya.")
+                return
+            
+            i_name, i_price = item.split('=', 1)
+            clean_price = int(i_price.replace('.', '').replace('Rp', '').strip())
+            parsed_items.append({"name": i_name.strip(), "price": clean_price})
+            total_harga += clean_price
+            
+        dp_harga = int(total_harga * 0.5)
         
         tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
         no_inv = f"INV/CCPN/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
@@ -185,9 +192,7 @@ def generate_invoice(message):
         pdf.add_page()
         
         # --- HEADER ---
-        # Cek apakah file logo.png ada di folder
         if os.path.exists("logo.png"):
-            # Koordinat y ditarik ke atas (y=2) dan ukuran sedikit diperbesar (w=32)
             pdf.image("logo.png", x=10, y=2, w=32)
             pdf.set_xy(45, 12)
         else:
@@ -201,7 +206,7 @@ def generate_invoice(message):
             pdf.set_x(45)
             
         pdf.set_font("helvetica", "", 10)
-        pdf.set_text_color(100, 100, 100) # Warna abu-abu elegan
+        pdf.set_text_color(100, 100, 100)
         pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
         
         # Garis pemisah header
@@ -234,14 +239,20 @@ def generate_invoice(message):
         
         # --- TABEL RINCIAN HARGA ---
         pdf.set_font("helvetica", "B", 11)
-        pdf.set_fill_color(240, 240, 240) # Latar belakang header tabel
+        pdf.set_fill_color(240, 240, 240) 
         pdf.set_draw_color(180, 180, 180)
-        pdf.cell(120, 10, "Deskripsi Paket Kerja Sama", border=1, align="C", fill=True)
-        pdf.cell(70, 10, "Total Biaya (IDR)", border=1, ln=True, align="C", fill=True)
+        pdf.cell(120, 10, "Deskripsi Item", border=1, align="C", fill=True)
+        pdf.cell(70, 10, "Biaya (IDR)", border=1, ln=True, align="C", fill=True)
         
         pdf.set_font("helvetica", "", 11)
-        pdf.cell(120, 12, f" Review Kuliner - {paket}", border=1, align="L")
-        pdf.cell(70, 12, f"Rp {harga:,.0f}", border=1, ln=True, align="R")
+        for item in parsed_items:
+            pdf.cell(120, 10, f" {item['name']}", border=1, align="L")
+            pdf.cell(70, 10, f"Rp {item['price']:,.0f}", border=1, ln=True, align="R")
+        
+        # Baris Total Keseluruhan
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
+        pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
         
         # Baris DP
         pdf.set_font("helvetica", "B", 11)
@@ -269,19 +280,23 @@ def generate_invoice(message):
         pdf.output(pdf_filename)
         
         # --- PROSES KIRIM PDF LANGSUNG KE TELEGRAM ---
-        bot.reply_to(message, "⏳ Sedang memproses pembuatan Invoice Profesional...")
+        bot.reply_to(message, "⏳ Sedang menyusun Invoice Multi-Item...")
         
-        # Kirim file sebagai dokumen ke chat
+        # Susun caption rincian item
+        caption_text = f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 *Rincian Item:*\n"
+        for item in parsed_items:
+            caption_text += f" • {item['name']}: Rp {item['price']:,.0f}\n"
+            
+        caption_text += f"\n💰 *Total Keseluruhan:* Rp {total_harga:,.0f}\n📉 *Tagihan DP (50%):* Rp {dp_harga:,.0f}\n\n_File PDF di atas siap di-forward ke klien._"
+        
         with open(pdf_filename, 'rb') as pdf_file:
-            caption_text = f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n_File PDF Cicipin Bogor di atas bisa langsung kamu forward ke klien._"
             bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
         
-        # Hapus file dari server setelah sukses terkirim
         if os.path.exists(pdf_filename):
             os.remove(pdf_filename)
 
     except ValueError:
-        bot.reply_to(message, "⚠️ Kesalahan input harga. Pastikan menulis angka harga dengan benar tanpa simbol mata uang.")
+        bot.reply_to(message, "⚠️ Kesalahan pada angka. Pastikan nominal harga hanya berupa angka saja (tanpa titik atau Rp).")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
