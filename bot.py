@@ -12,7 +12,7 @@ SHEET_ID = os.environ.get('SHEET_ID')
 CREDS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 MY_CHAT_IDS_STR = os.environ.get('MY_CHAT_ID', '') 
 
-# Ekstrak daftar Chat ID menjadi list (memisahkan berdasarkan koma)
+# Ekstrak daftar Chat ID menjadi list
 CHAT_ID_LIST = [cid.strip() for cid in MY_CHAT_IDS_STR.split(',') if cid.strip()]
 
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -33,27 +33,22 @@ def safe_date_parse(date_str):
     except:
         return datetime.min
 
-# Fungsi yang akan dijalankan otomatis setiap jam 8 malam
+# Fungsi Reminder
 def kirim_reminder_h1():
     try:
         if not CHAT_ID_LIST:
-            print("Reminder gagal: MY_CHAT_ID belum di-set di Railway.")
             return
 
-        # Hitung tanggal besok
         besok = datetime.now() + timedelta(days=1)
         tgl_besok_str = besok.strftime("%d/%m/%Y")
 
-        # Ambil data dari Google Sheets
         visits = visit_ws.get_all_records()
         posts = post_ws.get_all_records()
 
         visit_besok = [v for v in visits if str(v.get('Tanggal', '')).strip() == tgl_besok_str]
         post_besok = [p for p in posts if str(p.get('TanggalPosting', '')).strip() == tgl_besok_str]
 
-        # Susun pesan reminder
         pesan = f"🔔 *REMINDER H-1 JADWAL BESOK ({tgl_besok_str})*\n\n"
-
         pesan += "🎥 *Jadwal Visit Besok:*\n"
         if visit_besok:
             visit_besok_sorted = sorted(visit_besok, key=lambda x: str(x.get('Jam', '')))
@@ -62,9 +57,7 @@ def kirim_reminder_h1():
         else:
             pesan += "• Tidak ada jadwal visit untuk besok.\n"
 
-        pesan += "\n"
-
-        pesan += "🚀 *Jadwal Posting Konten Besok:*\n"
+        pesan += "\n🚀 *Jadwal Posting Konten Besok:*\n"
         if post_besok:
             for p in post_besok:
                 if str(p.get('Resto', '')).lower() != 'dummy':
@@ -74,22 +67,19 @@ def kirim_reminder_h1():
 
         pesan += "\nJangan lupa siapkan baterai kamera, bersihkan memory card, dan jaga kesehatan ya! 💪🔥"
 
-        # Kirim pesan ke SEMUA Chat ID yang terdaftar secara bergantian
         for chat_id in CHAT_ID_LIST:
             try:
                 bot.send_message(chat_id, pesan, parse_mode='Markdown')
-                print(f"Reminder otomatis H-1 berhasil dikirim ke {chat_id}.")
             except Exception as e:
                 print(f"Gagal mengirim reminder ke {chat_id}: {str(e)}")
 
     except Exception as e:
         print(f"Gagal memproses fungsi reminder: {str(e)}")
 
-# Setup Scheduler di background (Zona Waktu WIB)
+# Setup Scheduler di background
 scheduler = BackgroundScheduler(timezone="Asia/Jakarta") 
 scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
 scheduler.start()
-
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -99,11 +89,37 @@ def send_welcome(message):
         "1. /tambahvisit DD/MM/YYYY HH:MM Nama Resto\n"
         "2. /editvisit TglLama JamLama TglBaru JamBaru NamaResto\n"
         "3. /editposting TglPosting NamaRestoBaru\n"
-        "4. /batalvisit DD/MM/YYYY HH:MM - Batalkan jadwal visit\n"
-        "5. /batalposting DD/MM/YYYY - Batalkan jadwal posting\n"
+        "4. /batalvisit DD/MM/YYYY HH:MM\n"
+        "5. /batalposting DD/MM/YYYY\n"
         "6. /jadwalvisit - Lihat jadwal visit\n"
-        "7. /jadwalposting - Lihat antrean konten\n\n"
-        "📢 *Fitur Aktif:* Bot akan otomatis mengirim pengingat jadwal H-1 setiap jam 20:00 WIB ke semua akun yang didaftarkan."
+        "7. /jadwalposting - Lihat antrean konten\n"
+        "8. /ratecard - Munculkan template harga & kerja sama\n\n"
+        "📢 *Fitur Aktif:* Reminder otomatis H-1 setiap 20:00 WIB."
+    )
+    bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['ratecard'])
+def send_ratecard(message):
+    # KAMU BISA MENGUBAH TEKS DAN HARGA DI BAWAH INI SESUAI KEBUTUHANMU
+    teks = (
+        "📄 *TEMPLATE RATE CARD & KERJA SAMA*\n\n"
+        "Halo! Terima kasih atas ketertarikannya bekerja sama. "
+        "Berikut adalah penawaran paket liputan kuliner/review untuk brand Anda:\n\n"
+        "📦 *PAKET REGULER (Review Standar)*\n"
+        "• 1x Visit & Liputan Resto\n"
+        "• 1x Video tayang di TikTok & IG Reels\n"
+        "• Keep video permanent\n"
+        "• Harga: Rp 500.000\n\n"
+        "🚀 *PAKET GACOR (Grand Opening / Event)*\n"
+        "• 1x Visit & Liputan Prioritas\n"
+        "• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi\n"
+        "• Prioritas jadwal upload\n"
+        "• Harga: Rp 800.000\n\n"
+        "📌 *Catatan:*\n"
+        "• Harga di atas berlaku untuk wilayah Bogor dan sekitarnya.\n"
+        "• Luar Bogor akan dikenakan tambahan biaya transport.\n"
+        "• Pembayaran DP 50% wajib dilakukan untuk mengunci jadwal visit.\n\n"
+        "Silakan balas pesan ini jika ada paket yang sesuai atau jika ingin berdiskusi lebih lanjut! 🙏"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
