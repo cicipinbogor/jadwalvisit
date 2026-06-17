@@ -3,3 +3,5 @@ gspread
 google-auth
 APScheduler==3.10.4
 pytz
+fpdf2
+google-api-python-client
