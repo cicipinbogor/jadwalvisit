@@ -93,7 +93,8 @@ def send_welcome(message):
         "5. /batalposting DD/MM/YYYY\n"
         "6. /jadwalvisit - Lihat jadwal visit\n"
         "7. /jadwalposting - Lihat antrean konten\n"
-        "8. /ratecard - Munculkan template harga & kerja sama\n\n"
+        "8. /ratecard - Template harga & penawaran paket\n"
+        "9. /sk - Template Syarat & Ketentuan kerja sama\n\n"
         "📢 *Fitur Aktif:* Reminder otomatis H-1 setiap 20:00 WIB."
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
@@ -113,6 +114,7 @@ def send_ratecard(message):
         "• 1x Visit & Liputan Prioritas\n"
         "• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi\n"
         "• ✨ *FREE Collab on Instagram*\n"
+        "• Keep video permanent\n"
         "• Prioritas jadwal upload\n"
         "• Harga: Rp 800.000\n\n"
         "➕ *ADDITIONAL MENU*\n"
@@ -124,8 +126,31 @@ def send_ratecard(message):
         "  - 2x Story: +Rp 50.000\n\n"
         "📌 *Catatan:*\n"
         "• Harga berlaku untuk wilayah Bogor & sekitarnya.\n"
-        "• Pembayaran DP 50% wajib dilakukan untuk mengunci jadwal visit.\n\n"
+        "• Untuk Syarat & Ketentuan lengkap silakan ketik /sk\n\n"
         "Silakan balas pesan ini jika ada paket yang sesuai atau ingin berdiskusi lebih lanjut! 🙏"
+    )
+    bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['sk'])
+def send_sk(message):
+    teks = (
+        "📝 *TEMPLATE SYARAT & KETENTUAN (S&K) KERJA SAMA*\n\n"
+        "Untuk menjaga kenyamanan dan profesionalisme proses produksi konten, berikut adalah S&K yang berlaku:\n\n"
+        "1️⃣ *Proses Liputan & Konsumsi*\n"
+        "• Pihak resto menyediakan menu andalan yang akan di-review secara gratis (di luar biaya paket Rate Card).\n"
+        "• Proses syuting memakan waktu sekitar 1-2 jam. Mohon kondisikan area meja/resto agar nyaman untuk pengambilan visual.\n\n"
+        "2️⃣ *Sistem Pembayaran (Payment)*\n"
+        "• Down Payment (DP) sebesar 50% wajib dibayarkan maksimal H-3 sebelum jadwal visit untuk mengunci slot kalender liputan.\n"
+        "• Pelunasan sisa 50% dilakukan maksimal H-1 sebelum video resmi ditayangkan (upload).\n\n"
+        "3️⃣ *Reschedule & Pembatalan*\n"
+        "• Perubahan jadwal (reschedule) visit hanya diperbolehkan maksimal 1x, dan wajib diinfokan paling lambat H-2 sebelum hari liputan.\n"
+        "• Jika pihak klien membatalkan kerja sama sepihak setelah DP dibayarkan, maka DP dianggap hangus.\n\n"
+        "4️⃣ *Kebijakan Revisi Video*\n"
+        "• Klien berhak mendapatkan revisi video maksimal 1x (revisi minor seperti salah info harga, teks, atau penulisan nama).\n"
+        "• Revisi tidak berlaku untuk perombakan total konsep video atau pengambilan ulang (re-take) video di lokasi.\n\n"
+        "5️⃣ *Hak Cipta & Penggunaan Video*\n"
+        "• Hak cipta video sepenuhnya milik creator. Konten akan ditayangkan secara permanen di akun creator.\n"
+        "• Klien dilarang mengunggah ulang (re-upload) video utuh ke akun brand/resto tanpa membeli opsi *Owning Content*. Klien diperbolehkan membagikan video lewat fitur resmi (Share/Remix/Duet)."
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
