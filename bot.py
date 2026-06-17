@@ -1,8 +1,6 @@
 import telebot
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 from datetime import datetime, timedelta
 import os
 import json
@@ -12,7 +10,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # Ambil kredensial dari Environment Variables Railway
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 SHEET_ID = os.environ.get('SHEET_ID')
-FOLDER_ID = os.environ.get('FOLDER_ID') # ID Folder Google Drive untuk simpan Invoice
 CREDS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 MY_CHAT_IDS_STR = os.environ.get('MY_CHAT_ID', '') 
 
@@ -21,12 +18,9 @@ CHAT_ID_LIST = [cid.strip() for cid in MY_CHAT_IDS_STR.split(',') if cid.strip()
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Setup koneksi ke Google Workspace (Sheets & Drive)
+# Setup koneksi ke Google Workspace (Sheets)
 creds_dict = json.loads(CREDS_JSON)
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive" # Ditambahkan akses Drive
-]
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 
@@ -187,6 +181,8 @@ def generate_invoice(message):
         pdf_filename = f"Invoice_{resto.replace(' ', '_')}.pdf"
         
         # --- PROSES PEMBUATAN PDF (fpdf2) ---
+        bot.reply_to(message, "⏳ Sedang menyiapkan desain Invoice PDF...")
+        
         pdf = FPDF()
         pdf.add_page()
         
@@ -230,7 +226,7 @@ def generate_invoice(message):
         pdf.cell(80, 8, f"Rp {dp_harga:,.0f}", 0, 1, "R")
         pdf.ln(10)
         
-        # Ketentuan Pembayaran (Ganti tanda peluru dengan tanda strip agar fpdf tidak error)
+        # Ketentuan Pembayaran
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
         pdf.set_font("helvetica", "", 10)
@@ -244,28 +240,21 @@ def generate_invoice(message):
         # Simpan file
         pdf.output(pdf_filename)
         
-        # --- PROSES UPLOAD KE GOOGLE DRIVE ---
-        bot.reply_to(message, "⏳ Sedang memproses pembuatan PDF dan mengunggah ke Google Drive...")
+        # --- PROSES KIRIM LANGSUNG KE TELEGRAM ---
+        with open(pdf_filename, 'rb') as pdf_file:
+            caption_text = (
+                f"✅ *Invoice Sukses Dibuat!*\n\n"
+                f"📄 Klien: {resto}\n"
+                f"📋 Paket: {paket}\n"
+                f"💰 Total: Rp {harga:,.0f}\n"
+                f"📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n"
+                f"💡 _Silakan Forward dokumen PDF di atas ke pihak resto._"
+            )
+            bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
         
-        drive_service = build('drive', 'v3', credentials=creds)
-        file_metadata = {
-            'name': f"Invoice_{resto}_{datetime.now().strftime('%d-%m-%Y')}.pdf",
-            'parents': [FOLDER_ID] if FOLDER_ID else []
-        }
-        media = MediaFileUpload(pdf_filename, mimetype='application/pdf')
-        
-        uploaded_file = drive_service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            fields='id, webViewLink'
-        ).execute()
-        
-        drive_link = uploaded_file.get('webViewLink')
-        
+        # Hapus file lokal setelah berhasil dikirim
         if os.path.exists(pdf_filename):
             os.remove(pdf_filename)
-            
-        bot.reply_to(message, f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n📂 *Link Google Drive:*\n{drive_link}", parse_mode='Markdown')
 
     except ValueError:
         bot.reply_to(message, "⚠️ Kesalahan input harga. Pastikan menulis angka harga dengan benar tanpa simbol mata uang.")
@@ -429,97 +418,4 @@ def cancel_visit(message):
         row_to_delete = None
         resto_name = ""
 
-        for idx, v in enumerate(visits, start=2):
-            if str(v.get('Tanggal', '')).strip() == date_str and str(v.get('Jam', '')).strip() == time_str:
-                row_to_delete = idx
-                resto_name = v.get('Resto', '')
-                break
-
-        if not row_to_delete:
-            bot.reply_to(message, f"❌ Jadwal visit pada {date_str} jam {time_str} tidak ditemukan.")
-            return
-
-        visit_ws.delete_rows(row_to_delete)
-        bot.reply_to(message, f"🗑 Jadwal visit ke {resto_name} pada {date_str} jam {time_str} berhasil dibatalkan.")
-
-    except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
-    except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
-
-@bot.message_handler(commands=['batalposting'])
-def cancel_posting(message):
-    try:
-        parts = message.text.split(maxsplit=1)
-        if len(parts) < 2:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/batalposting DD/MM/YYYY")
-            return
-
-        post_date = parts[1].replace('-', '/')
-        datetime.strptime(post_date, "%d/%m/%Y")
-
-        posts = post_ws.get_all_records()
-        row_to_delete = None
-        resto_name = ""
-
-        for idx, p in enumerate(posts, start=2):
-            if str(p.get('TanggalPosting', '')).strip() == post_date:
-                row_to_delete = idx
-                resto_name = p.get('Resto', '')
-                break
-
-        if not row_to_delete:
-            bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan.")
-            return
-
-        post_ws.delete_rows(row_to_delete)
-        bot.reply_to(message, f"🗑 Jadwal posting untuk {resto_name} pada tanggal {post_date} berhasil dibatalkan.")
-
-    except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
-    except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
-
-@bot.message_handler(commands=['jadwalvisit'])
-def list_visit(message):
-    try:
-        visits = visit_ws.get_all_records()
-        if not visits:
-            bot.reply_to(message, "Belum ada jadwal visit yang terdaftar.")
-            return
-        
-        reply = "📌 List Jadwal Visit:\n\n"
-        for v in sorted(visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', '')))):
-            if v.get('Tanggal') and str(v.get('Resto', '')).lower() != 'dummy':
-                reply += f"• {v['Tanggal']} | {v['Jam']} - {v['Resto']}\n"
-        
-        if reply == "📌 List Jadwal Visit:\n\n":
-            bot.reply_to(message, "Belum ada jadwal visit yang terdaftar.")
-        else:
-            bot.reply_to(message, reply)
-            
-    except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
-
-@bot.message_handler(commands=['jadwalposting'])
-def list_posting(message):
-    try:
-        posts = post_ws.get_all_records()
-        if not posts:
-            bot.reply_to(message, "Belum ada antrean jadwal posting.")
-            return
-        
-        reply = "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n"
-        for p in sorted(posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', ''))):
-            if p.get('TanggalPosting') and str(p.get('Resto', '')).lower() != 'dummy':
-                reply += f"• {p['TanggalPosting']} - Konten: {p['Resto']}\n"
-        
-        if reply == "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n":
-            bot.reply_to(message, "Belum ada antrean jadwal posting.")
-        else:
-            bot.reply_to(message, reply)
-            
-    except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
-
-bot.infinity_polling()
+        for idx, v in enumerate(visits, start
