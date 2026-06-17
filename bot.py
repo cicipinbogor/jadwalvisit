@@ -1,8 +1,6 @@
 import telebot
 import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
 from datetime import datetime, timedelta
 import os
 import json
@@ -12,7 +10,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # Ambil kredensial dari Environment Variables Railway
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 SHEET_ID = os.environ.get('SHEET_ID')
-FOLDER_ID = os.environ.get('FOLDER_ID') # ID Folder Google Drive untuk simpan Invoice
 CREDS_JSON = os.environ.get('GOOGLE_CREDENTIALS')
 MY_CHAT_IDS_STR = os.environ.get('MY_CHAT_ID', '') 
 
@@ -21,12 +18,9 @@ CHAT_ID_LIST = [cid.strip() for cid in MY_CHAT_IDS_STR.split(',') if cid.strip()
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Setup koneksi ke Google Workspace (Sheets & Drive)
+# Setup koneksi ke Google Workspace (Hanya Sheets)
 creds_dict = json.loads(CREDS_JSON)
-scopes = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive" 
-]
+scopes = ["https://www.googleapis.com/auth/spreadsheets"]
 creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
 client = gspread.authorize(creds)
 
@@ -230,7 +224,7 @@ def generate_invoice(message):
         pdf.cell(80, 8, f"Rp {dp_harga:,.0f}", 0, 1, "R")
         pdf.ln(10)
         
-        # Ketentuan Pembayaran (Ganti tanda peluru dengan tanda strip agar fpdf tidak error)
+        # Ketentuan Pembayaran
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
         pdf.set_font("helvetica", "", 10)
@@ -244,28 +238,17 @@ def generate_invoice(message):
         # Simpan file
         pdf.output(pdf_filename)
         
-        # --- PROSES UPLOAD KE GOOGLE DRIVE ---
-        bot.reply_to(message, "⏳ Sedang memproses pembuatan PDF dan mengunggah ke Google Drive...")
+        # --- PROSES KIRIM PDF LANGSUNG KE TELEGRAM ---
+        bot.reply_to(message, "⏳ Sedang memproses pembuatan PDF...")
         
-        drive_service = build('drive', 'v3', credentials=creds)
-        file_metadata = {
-            'name': f"Invoice_{resto}_{datetime.now().strftime('%d-%m-%Y')}.pdf",
-            'parents': [FOLDER_ID] if FOLDER_ID else []
-        }
-        media = MediaFileUpload(pdf_filename, mimetype='application/pdf')
+        # Kirim file sebagai dokumen ke chat
+        with open(pdf_filename, 'rb') as pdf_file:
+            caption_text = f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n_File PDF di atas bisa langsung kamu teruskan (forward) ke pihak resto._"
+            bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
         
-        uploaded_file = drive_service.files().create(
-            body=file_metadata, 
-            media_body=media, 
-            fields='id, webViewLink'
-        ).execute()
-        
-        drive_link = uploaded_file.get('webViewLink')
-        
+        # Hapus file dari server setelah sukses terkirim
         if os.path.exists(pdf_filename):
             os.remove(pdf_filename)
-            
-        bot.reply_to(message, f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 Paket: {paket}\n💰 Total: Rp {harga:,.0f}\n📉 Tagihan DP (50%): Rp {dp_harga:,.0f}\n\n📂 *Link Google Drive:*\n{drive_link}", parse_mode='Markdown')
 
     except ValueError:
         bot.reply_to(message, "⚠️ Kesalahan input harga. Pastikan menulis angka harga dengan benar tanpa simbol mata uang.")
