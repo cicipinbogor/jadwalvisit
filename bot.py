@@ -96,15 +96,15 @@ def send_welcome(message):
         "7. /jadwalposting - Lihat antrean konten\n"
         "8. /ratecard - Template harga paket\n"
         "9. /sk - Template Syarat & Ketentuan\n"
-        "10. /invoice Nama Resto - Item1=Harga, Item2=Harga\n"
-        "    (Contoh: /invoice Kopi Daun - Pkt Gacor=800000, Owning 2K=200000)"
+        "10. /invoice Nama Resto - Item1=Harga, Item2=Harga (Versi DP 50%)\n"
+        "11. /invoicefull Nama Resto - Item1=Harga, Item2=Harga (Versi Lunas 100%)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
 @bot.message_handler(commands=['ratecard'])
 def send_ratecard(message):
     teks = (
-        "📄 *TEMPLATE RATE CARD & KERJA SAMA*\n\n"
+        "📄 *RATE CARD & KERJA SAMA*\n\n"
         "Halo! Terima kasih atas ketertarikannya bekerja sama. Berikut adalah penawaran paket liputan kuliner/review:\n\n"
         "📦 *PAKET REGULER (Review Standar)*\n"
         "• 1x Visit & Liputan Resto\n"
@@ -136,7 +136,7 @@ def send_ratecard(message):
 @bot.message_handler(commands=['sk'])
 def send_sk(message):
     teks = (
-        "📝 *TEMPLATE SYARAT & KETENTUAN (S&K) KERJA SAMA*\n\n"
+        "📝 *SYARAT & KETENTUAN (S&K) KERJA SAMA*\n\n"
         "Untuk menjaga kenyamanan dan profesionalisme proses produksi konten, berikut adalah S&K yang berlaku:\n\n"
         "1️⃣ *Proses Liputan & Konsumsi*\n"
         "• Pihak resto menyediakan menu andalan yang akan di-review secara gratis.\n"
@@ -154,6 +154,116 @@ def send_sk(message):
         "• Klien dilarang mengunggah ulang (re-upload) video utuh tanpa membeli opsi *Owning Content*."
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
+
+# Fungsi dasar untuk merancang struktur PDF Invoice agar tidak menulis kode ganda
+def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # --- HEADER ---
+    if os.path.exists("logo.png"):
+        pdf.image("logo.png", x=10, y=2, w=32)
+        pdf.set_xy(45, 10)
+    else:
+        pdf.set_xy(10, 10)
+        
+    pdf.set_font("helvetica", "B", 24)
+    pdf.set_text_color(0, 0, 0)
+    pdf.cell(0, 8, "Cicipin Bogor", ln=True)
+    
+    if os.path.exists("logo.png"):
+        pdf.set_x(45)
+        
+    pdf.set_font("helvetica", "", 10)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
+    
+    # INFO KONTAK TAMBAHAN DI BAWAH HEADER
+    if os.path.exists("logo.png"):
+        pdf.set_x(45)
+    pdf.set_font("helvetica", "I", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
+    
+    # Garis pemisah header
+    pdf.ln(3)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(10)
+    
+    # --- INVOICE TITLE & INFO ---
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("helvetica", "B", 18)
+    pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True)
+    pdf.ln(2)
+    
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(30, 6, "No. Invoice", 0, 0)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(60, 6, f": {no_inv}", 0, 0)
+    
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(30, 6, "Klien / Resto", 0, 0)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, f": {resto}", ln=True)
+    
+    pdf.set_font("helvetica", "B", 10)
+    pdf.cell(30, 6, "Tanggal", 0, 0)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(60, 6, f": {tgl_sekarang}", 0, 1)
+    pdf.ln(10)
+    
+    # --- TABEL RINCIAN HARGA ---
+    pdf.set_font("helvetica", "B", 11)
+    pdf.set_fill_color(240, 240, 240) 
+    pdf.set_draw_color(180, 180, 180)
+    pdf.cell(120, 10, "Deskripsi Item", border=1, align="C", fill=True)
+    pdf.cell(70, 10, "Biaya (IDR)", border=1, ln=True, align="C", fill=True)
+    
+    pdf.set_font("helvetica", "", 11)
+    for item in parsed_items:
+        pdf.cell(120, 10, f" {item['name']}", border=1, align="L")
+        pdf.cell(70, 10, f"Rp {item['price']:,.0f}", border=1, ln=True, align="R")
+    
+    if not is_full_payment:
+        # Baris Total Keseluruhan (Jika sistem cicilan / DP)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
+        pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
+        
+        # Baris DP 50%
+        dp_harga = int(total_harga * 0.5)
+        pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
+        pdf.cell(70, 10, f"Rp {dp_harga:,.0f}", border=1, ln=True, align="R")
+    else:
+        # Baris Total Jatuh Tempo (Langsung 100% Full)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(120, 10, "Total Tagihan (Pembayaran Penuh / Full)", border=1, align="R", fill=True)
+        pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
+        
+    pdf.ln(15)
+    
+    # --- INFORMASI PEMBAYARAN ---
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
+    
+    pdf.set_font("helvetica", "", 11)
+    pdf.cell(0, 6, "- Bank: Seabank", ln=True)
+    pdf.cell(0, 6, "- No. Rekening: 901177950990", ln=True)
+    pdf.cell(0, 6, "- Atas Nama: Afrizal", ln=True)
+    pdf.ln(15)
+    
+    # --- FOOTER ---
+    pdf.set_font("helvetica", "I", 9)
+    pdf.set_text_color(150, 150, 150)
+    if not is_full_payment:
+        pdf.cell(0, 5, "*Mohon kirimkan bukti transfer jika pembayaran DP telah dilakukan.", ln=True, align="C")
+    else:
+        pdf.cell(0, 5, "*Mohon kirimkan bukti transfer jika proses pembayaran pelunasan telah dilakukan.", ln=True, align="C")
+        
+    pdf.cell(0, 5, "Terima kasih atas kepercayaan Anda bekerja sama dengan Cicipin Bogor!", ln=True, align="C")
+    
+    return pdf
 
 @bot.message_handler(commands=['invoice'])
 def generate_invoice(message):
@@ -181,113 +291,75 @@ def generate_invoice(message):
             total_harga += clean_price
             
         dp_harga = int(total_harga * 0.5)
-        
         tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
         no_inv = f"INV/CCPN/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
         
         pdf_filename = f"Invoice_{resto.replace(' ', '_')}.pdf"
         
-        # --- PROSES PEMBUATAN PDF (fpdf2) DESAIN PROFESIONAL ---
-        pdf = FPDF()
-        pdf.add_page()
-        
-        # --- HEADER ---
-        if os.path.exists("logo.png"):
-            pdf.image("logo.png", x=10, y=2, w=32)
-            pdf.set_xy(45, 12)
-        else:
-            pdf.set_xy(10, 12)
-            
-        pdf.set_font("helvetica", "B", 24)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(0, 8, "Cicipin Bogor", ln=True)
-        
-        if os.path.exists("logo.png"):
-            pdf.set_x(45)
-            
-        pdf.set_font("helvetica", "", 10)
-        pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
-        
-        # Garis pemisah header
-        pdf.ln(5)
-        pdf.set_draw_color(200, 200, 200)
-        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-        pdf.ln(10)
-        
-        # --- INVOICE TITLE & INFO ---
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("helvetica", "B", 18)
-        pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True)
-        pdf.ln(2)
-        
-        pdf.set_font("helvetica", "B", 10)
-        pdf.cell(30, 6, "No. Invoice", 0, 0)
-        pdf.set_font("helvetica", "", 10)
-        pdf.cell(60, 6, f": {no_inv}", 0, 0)
-        
-        pdf.set_font("helvetica", "B", 10)
-        pdf.cell(30, 6, "Klien / Resto", 0, 0)
-        pdf.set_font("helvetica", "", 10)
-        pdf.cell(0, 6, f": {resto}", ln=True)
-        
-        pdf.set_font("helvetica", "B", 10)
-        pdf.cell(30, 6, "Tanggal", 0, 0)
-        pdf.set_font("helvetica", "", 10)
-        pdf.cell(60, 6, f": {tgl_sekarang}", 0, 1)
-        pdf.ln(10)
-        
-        # --- TABEL RINCIAN HARGA ---
-        pdf.set_font("helvetica", "B", 11)
-        pdf.set_fill_color(240, 240, 240) 
-        pdf.set_draw_color(180, 180, 180)
-        pdf.cell(120, 10, "Deskripsi Item", border=1, align="C", fill=True)
-        pdf.cell(70, 10, "Biaya (IDR)", border=1, ln=True, align="C", fill=True)
-        
-        pdf.set_font("helvetica", "", 11)
-        for item in parsed_items:
-            pdf.cell(120, 10, f" {item['name']}", border=1, align="L")
-            pdf.cell(70, 10, f"Rp {item['price']:,.0f}", border=1, ln=True, align="R")
-        
-        # Baris Total Keseluruhan
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
-        pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
-        
-        # Baris DP
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
-        pdf.cell(70, 10, f"Rp {dp_harga:,.0f}", border=1, ln=True, align="R")
-        pdf.ln(15)
-        
-        # --- INFORMASI PEMBAYARAN ---
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
-        
-        pdf.set_font("helvetica", "", 11)
-        pdf.cell(0, 6, "- Bank: Seabank", ln=True)
-        pdf.cell(0, 6, "- No. Rekening: 901177950990", ln=True)
-        pdf.cell(0, 6, "- Atas Nama: Afrizal", ln=True)
-        pdf.ln(15)
-        
-        # --- FOOTER ---
-        pdf.set_font("helvetica", "I", 9)
-        pdf.set_text_color(150, 150, 150)
-        pdf.cell(0, 5, "*Mohon kirimkan bukti transfer jika pembayaran DP telah dilakukan.", ln=True, align="C")
-        pdf.cell(0, 5, "Terima kasih atas kepercayaan Anda bekerja sama dengan Cicipin Bogor!", ln=True, align="C")
-        
-        # Simpan file
+        # Cetak PDF versi DP
+        pdf = build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False)
         pdf.output(pdf_filename)
         
-        # --- PROSES KIRIM PDF LANGSUNG KE TELEGRAM ---
-        bot.reply_to(message, "⏳ Sedang menyusun Invoice Multi-Item...")
+        bot.reply_to(message, "⏳ Sedang menyusun Invoice Rincian DP...")
         
-        # Susun caption rincian item
-        caption_text = f"✅ *Invoice Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 *Rincian Item:*\n"
+        caption_text = f"✅ *Invoice DP Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 *Rincian Item:*\n"
         for item in parsed_items:
             caption_text += f" • {item['name']}: Rp {item['price']:,.0f}\n"
             
-        caption_text += f"\n💰 *Total Keseluruhan:* Rp {total_harga:,.0f}\n📉 *Tagihan DP (50%):* Rp {dp_harga:,.0f}\n\n_File PDF di atas siap di-forward ke klien._"
+        caption_text += f"\n💰 *Total Keseluruhan:* Rp {total_harga:,.0f}\n📉 *Tagihan DP (50%):* Rp {dp_harga:,.0f}\n\n_File PDF Cicipin Bogor di atas siap di-forward ke klien._"
+        
+        with open(pdf_filename, 'rb') as pdf_file:
+            bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
+        
+        if os.path.exists(pdf_filename):
+            os.remove(pdf_filename)
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Kesalahan pada angka. Pastikan nominal harga hanya berupa angka saja (tanpa titik atau Rp).")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['invoicefull'])
+def generate_invoice_full(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or '-' not in parts[1]:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoicefull Nama Resto - Item1=Harga1, Item2=Harga2\n\nContoh:\n/invoicefull Brano Pizzeria - Pkt Gacor=800000, 2x Story=50000")
+            return
+        
+        main_parts = parts[1].split('-', 1)
+        resto = main_parts[0].strip()
+        items_raw = main_parts[1].split(',')
+        
+        parsed_items = []
+        total_harga = 0
+        
+        for item in items_raw:
+            if '=' not in item:
+                bot.reply_to(message, f"⚠️ Format salah pada item: '{item.strip()}'. Pastikan pakai tanda '=' untuk memisahkan nama item dan harganya.")
+                return
+            
+            i_name, i_price = item.split('=', 1)
+            clean_price = int(i_price.replace('.', '').replace('Rp', '').strip())
+            parsed_items.append({"name": i_name.strip(), "price": clean_price})
+            total_harga += clean_price
+            
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        no_inv = f"INV/CCPN/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
+        
+        pdf_filename = f"Invoice_Full_{resto.replace(' ', '_')}.pdf"
+        
+        # Cetak PDF versi FULL 100% tanpa tulisan DP
+        pdf = build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=True)
+        pdf.output(pdf_filename)
+        
+        bot.reply_to(message, "⏳ Sedang menyusun Invoice Full Payment...")
+        
+        caption_text = f"✅ *Invoice Pembayaran Penuh Sukses Dibuat!*\n\n📄 Klien: {resto}\n📋 *Rincian Item:*\n"
+        for item in parsed_items:
+            caption_text += f" • {item['name']}: Rp {item['price']:,.0f}\n"
+            
+        caption_text += f"\n💰 *Total Pembayaran Lunas:* Rp {total_harga:,.0f}\n\n_File PDF Cicipin Bogor di atas siap di-forward ke klien._"
         
         with open(pdf_filename, 'rb') as pdf_file:
             bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
@@ -500,6 +572,7 @@ def cancel_posting(message):
             bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan.")
             return
 
+        post_ws.update_cell(row_to_delete, 2, resto_name) # dummy fix jika baris tidak terhapus sempurna
         post_ws.delete_rows(row_to_delete)
         bot.reply_to(message, f"🗑 Jadwal posting untuk {resto_name} pada tanggal {post_date} berhasil dibatalkan.")
 
