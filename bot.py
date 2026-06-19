@@ -311,7 +311,17 @@ def generate_kwitansi(message):
         pdf.cell(120, 6, "", 0, 0)
         pdf.cell(70, 6, f"Bogor, {tgl_sekarang}", 0, 1, "C")
         
-        pdf.ln(15) # Spasi stempel
+        y_before_ttd = pdf.get_y()
+        
+        # Menempelkan stempel LUNAS di sebelah kiri tanda tangan
+        if os.path.exists("lunas.jpg"):
+            pdf.image("lunas.jpg", x=30, y=y_before_ttd + 2, w=40)
+            
+        # Menempelkan Tanda Tangan di sebelah kanan atas nama
+        if os.path.exists("ttd.png"):
+            pdf.image("ttd.png", x=145, y=y_before_ttd, w=20)
+        
+        pdf.ln(22) # Spasi yang pas untuk gambar stempel & TTD
         
         pdf.set_font("helvetica", "BU", 11)
         pdf.cell(120, 6, "", 0, 0)
@@ -324,7 +334,7 @@ def generate_kwitansi(message):
         # Simpan file
         pdf.output(pdf_filename)
         
-        bot.reply_to(message, "⏳ Sedang mencetak Kwitansi Resmi...")
+        bot.reply_to(message, "⏳ Sedang mencetak Kwitansi Resmi dengan Stempel LUNAS...")
         
         caption_text = f"✅ *Kwitansi Sukses Dibuat!*\n\n📄 Klien: {resto}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}\n\n_File PDF Kwitansi di atas siap di-forward ke klien sebagai bukti lunas._"
         
