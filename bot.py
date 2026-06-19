@@ -311,17 +311,31 @@ def generate_kwitansi(message):
         pdf.cell(120, 6, "", 0, 0)
         pdf.cell(70, 6, f"Bogor, {tgl_sekarang}", 0, 1, "C")
         
-        y_before_ttd = pdf.get_y()
+        y_ttd = pdf.get_y()
         
-        # Menempelkan stempel LUNAS di sebelah kiri tanda tangan
-        if os.path.exists("lunas.jpg"):
-            pdf.image("lunas.jpg", x=30, y=y_before_ttd + 2, w=40)
+        # Pelacak Otomatis Ekstensi Gambar LUNAS
+        lunas_file = None
+        for ext in ["lunas.jpg", "lunas.jpeg", "lunas.png", "LUNAS.jpg", "LUNAS.png"]:
+            if os.path.exists(ext):
+                lunas_file = ext
+                break
+                
+        if lunas_file:
+            # Diperbesar dan digeser agar pas di ruang kosong
+            pdf.image(lunas_file, x=20, y=y_ttd - 8, w=55)
             
-        # Menempelkan Tanda Tangan di sebelah kanan atas nama
-        if os.path.exists("ttd.png"):
-            pdf.image("ttd.png", x=145, y=y_before_ttd, w=20)
+        # Pelacak Otomatis Ekstensi Gambar TTD
+        ttd_file = None
+        for ext in ["ttd.png", "ttd.jpg", "TTD.png"]:
+            if os.path.exists(ext):
+                ttd_file = ext
+                break
+                
+        if ttd_file:
+            # Mengatur letak TTD tepat di tengah tulisan "Cicipin Bogor" (koordinat x disesuaikan)
+            pdf.image(ttd_file, x=152.5, y=y_ttd + 2, w=25)
         
-        pdf.ln(22) # Spasi yang pas untuk gambar stempel & TTD
+        pdf.ln(30) # Spasi yang pas untuk gambar stempel & tinggi TTD
         
         pdf.set_font("helvetica", "BU", 11)
         pdf.cell(120, 6, "", 0, 0)
