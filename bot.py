@@ -4,8 +4,11 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import os
 import json
+import re
 from fpdf import FPDF
 from apscheduler.schedulers.background import BackgroundScheduler
+from pydub import AudioSegment
+import speech_recognition as sr
 
 # Ambil kredensial dari Environment Variables Railway
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -114,9 +117,80 @@ def send_welcome(message):
         "15. /catatmasuk Nominal Keterangan\n"
         "16. /catatkeluar Nominal Keterangan\n"
         "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan untuk bulan ini)\n"
-        "18. /spk Nama Resto - Nama Paket"
+        "18. /spk Nama Resto - Nama Paket\n\n"
+        "🎙️ *FITUR BARU:* Kirim Voice Note untuk mencatat keuangan otomatis! (Contoh: 'Catat pengeluaran bensin dua puluh ribu')"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
+
+# --- FITUR AI PENDENGAR SUARA UNTUK KEUANGAN ---
+@bot.message_handler(content_types=['voice'])
+def handle_voice_finance(message):
+    try:
+        msg = bot.reply_to(message, "⏳ _Sedang mencerna pesan suara kamu..._", parse_mode="Markdown")
+        
+        # Download file audio OGG dari Telegram
+        file_info = bot.get_file(message.voice.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+        
+        ogg_path = f"voice_{message.message_id}.ogg"
+        wav_path = f"voice_{message.message_id}.wav"
+        
+        with open(ogg_path, 'wb') as new_file:
+            new_file.write(downloaded_file)
+            
+        # Konversi OGG ke WAV agar bisa dibaca Google STT
+        audio = AudioSegment.from_file(ogg_path, format="ogg")
+        audio.export(wav_path, format="wav")
+        
+        # Proses Transkrip Suara ke Teks
+        r = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = r.record(source)
+            teks_hasil = r.recognize_google(audio_data, language="id-ID")
+        
+        # Hapus file mentahan agar server Railway tidak penuh
+        os.remove(ogg_path)
+        os.remove(wav_path)
+        
+        teks_lower = teks_hasil.lower()
+        
+        # Logika NLP (Natural Language Processing) Sederhana
+        # Mengubah teks ucapan seperti "ribu", "juta" menjadi format angka
+        teks_angka = teks_lower.replace("ribu", "000").replace("juta", "000000").replace(".", "").replace("rupiah", "")
+        
+        # Mencari deretan angka pertama dalam kalimat
+        angka_match = re.search(r'\d+', teks_angka)
+        
+        if not angka_match:
+            bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n\n⚠️ *Gagal Mencatat:* Bot tidak menemukan nominal angka yang jelas. Coba sebutkan angkanya lebih tegas.", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            return
+            
+        nominal = int(angka_match.group())
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        # Menebak ini uang masuk atau keluar dari konteks kalimat
+        if any(kata in teks_lower for kata in ["masuk", "pemasukan", "terima", "dp", "pelunasan"]):
+            jenis = "Pemasukan"
+        elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan"]):
+            jenis = "Pengeluaran"
+        else:
+            bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n\n⚠️ *Gagal Mencatat:* Bot bingung ini uang masuk atau keluar. Tolong sebutkan kata 'Pemasukan' atau 'Pengeluaran'.", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            return
+            
+        # Simpan ke Google Sheets
+        keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
+        
+        # Balasan sukses
+        icon = "✅" if jenis == "Pemasukan" else "📉"
+        reply_sukses = f"{icon} *{jenis} Dicatat via Suara!*\n\n🗣️ _\"{teks_hasil}\"_\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}"
+        bot.edit_message_text(reply_sukses, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+        
+    except sr.UnknownValueError:
+        bot.reply_to(message, "⚠️ Bot tidak bisa mendengar suara dengan jelas. Coba ulangi pelan-pelan ya.")
+    except sr.RequestError as e:
+        bot.reply_to(message, f"⚠️ Layanan pengenalan suara Google sedang gangguan: {e}")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['spk'])
 def generate_spk(message):
@@ -227,7 +301,6 @@ def generate_spk(message):
                 break
 
         if ttd_file:
-            # Letak di sebelah kiri (x=45 agar pas di tengah kolom Pihak Pertama)
             pdf.image(ttd_file, x=45, y=y_ttd + 2, w=25)
 
         pdf.ln(25) # Spasi tinggi TTD
