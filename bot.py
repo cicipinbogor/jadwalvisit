@@ -92,16 +92,17 @@ def send_welcome(message):
         "Cara pakai:\n"
         "1. /tambahvisit DD/MM/YYYY HH:MM Nama Resto\n"
         "2. /editvisit TglLama JamLama TglBaru JamBaru NamaResto\n"
-        "3. /editposting TglPosting NamaRestoBaru\n"
-        "4. /batalvisit DD/MM/YYYY HH:MM\n"
-        "5. /batalposting DD/MM/YYYY\n"
-        "6. /jadwalvisit - Lihat jadwal visit\n"
-        "7. /jadwalposting - Lihat antrean konten\n"
-        "8. /ratecard - Harga paket standar/event\n"
-        "9. /ratecardumkm - Harga khusus support UMKM\n"
-        "10. /sk - Syarat & Ketentuan\n"
-        "11. /invoice Nama Resto - Item1=Harga, Item2=Harga (Versi DP)\n"
-        "12. /invoicefull Nama Resto - Item1=Harga, Item2=Harga (Versi Lunas)"
+        "3. /tambahposting DD/MM/YYYY Nama Konten\n"
+        "4. /editposting TglPosting NamaRestoBaru\n"
+        "5. /batalvisit DD/MM/YYYY HH:MM\n"
+        "6. /batalposting DD/MM/YYYY\n"
+        "7. /jadwalvisit - Lihat jadwal visit\n"
+        "8. /jadwalposting - Lihat antrean konten\n"
+        "9. /ratecard - Harga paket standar/event\n"
+        "10. /ratecardumkm - Harga khusus support UMKM\n"
+        "11. /sk - Syarat & Ketentuan\n"
+        "12. /invoice Nama Resto - Item1=Harga, Item2=Harga (Versi DP)\n"
+        "13. /invoicefull Nama Resto - Item1=Harga, Item2=Harga (Versi Lunas)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -444,6 +445,37 @@ def add_visit(message):
 
     except ValueError:
         bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['tambahposting'])
+def add_posting(message):
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/tambahposting DD/MM/YYYY Nama Konten")
+            return
+
+        date_str = parts[1].replace('-', '/')
+        resto_name = parts[2]
+
+        # Validasi format tanggal
+        datetime.strptime(date_str, "%d/%m/%Y")
+
+        posts = post_ws.get_all_records()
+        
+        # Cek apakah sudah ada antrean posting di tanggal tersebut
+        for p in posts:
+            if str(p.get('TanggalPosting', '')).strip() == date_str:
+                bot.reply_to(message, f"❌ Slot posting tanggal {date_str} sudah penuh (Maksimal 1 konten per hari).\n\n🎥 Konten yang sudah terjadwal: {p.get('Resto', '')}")
+                return
+
+        # Masukkan ke Google Sheet jika tanggal kosong
+        post_ws.append_row([date_str, resto_name])
+        bot.reply_to(message, f"✅ Berhasil!\n\n🚀 Jadwal posting konten {resto_name} berhasil ditambahkan pada tanggal {date_str}.")
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
