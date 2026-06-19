@@ -55,7 +55,6 @@ def parse_tanggal_jam(teks):
     date_str = None
     time_str = None
 
-    # Deteksi Tanggal Relatif
     if "hari ini" in teks_lower:
         date_str = now.strftime("%d/%m/%Y")
     elif "besok" in teks_lower:
@@ -63,7 +62,6 @@ def parse_tanggal_jam(teks):
     elif "lusa" in teks_lower:
         date_str = (now + timedelta(days=2)).strftime("%d/%m/%Y")
     else:
-        # Deteksi Tanggal Spesifik (Cth: 12 Juni 2026 atau 12 Juni)
         bulan_dict = {"januari": "01", "februari": "02", "maret": "03", "april": "04", "mei": "05", "juni": "06", 
                       "juli": "07", "agustus": "08", "september": "09", "oktober": "10", "november": "11", "desember": "12"}
         for bln_indo, bln_angka in bulan_dict.items():
@@ -74,7 +72,6 @@ def parse_tanggal_jam(teks):
                 date_str = f"{tgl}/{bln_angka}/{thn}"
                 break
         
-        # Deteksi Format Angka (Cth: 12/06/2026 atau tanggal 12 bulan 6)
         if not date_str:
             m = re.search(r'(?:tanggal\s+)?(\d{1,2})(?:/|\s+bulan\s+)(\d{1,2})(?:(?:/|\s+tahun\s+)(\d{4}))?', teks_lower)
             if m:
@@ -83,7 +80,6 @@ def parse_tanggal_jam(teks):
                 thn = m.group(3) if m.group(3) else str(now.year)
                 date_str = f"{tgl}/{bln}/{thn}"
 
-    # Deteksi Jam (Cth: jam 14.00, jam 2 siang, jam 8 malam)
     match_jam = re.search(r'jam\s+(\d{1,2})(?:[\.\:\s]([0-5]\d))?\s*(pagi|siang|sore|malam)?', teks_lower)
     if match_jam:
         h = int(match_jam.group(1))
@@ -94,7 +90,7 @@ def parse_tanggal_jam(teks):
             h += 12
         if keterangan == 'malam' and h < 12:
             h += 12
-        if keterangan == 'malam' and h == 12: # Mencegah 24:00 menjadi salah
+        if keterangan == 'malam' and h == 12: 
             h = 12
             
         time_str = f"{str(h).zfill(2)}:{m}"
@@ -112,7 +108,6 @@ def extract_nominal(teks):
         return max([int(x) for x in angka_matches])
     return None
 
-# Fungsi Reminder H-1
 def kirim_reminder_h1():
     try:
         if not CHAT_ID_LIST:
@@ -166,23 +161,24 @@ def send_welcome(message):
         "Cara pakai:\n"
         "1. /tambahvisit DD/MM/YYYY HH:MM Nama Resto\n"
         "2. /editvisit TglLama JamLama TglBaru JamBaru NamaResto\n"
-        "3. /tambahposting DD/MM/YYYY Nama Konten\n"
-        "4. /editposting TglPosting NamaRestoBaru\n"
-        "5. /batalvisit DD/MM/YYYY HH:MM\n"
-        "6. /batalposting DD/MM/YYYY\n"
-        "7. /jadwalvisit - Lihat jadwal visit\n"
-        "8. /jadwalposting - Lihat antrean konten\n"
-        "9. /ratecard - Harga paket standar/event\n"
-        "10. /ratecardumkm - Harga khusus support UMKM\n"
-        "11. /sk - Syarat & Ketentuan\n"
-        "12. /invoice Nama - Item1=Harga; Item2=Harga (DP)\n"
-        "13. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
-        "14. /kwitansi Nama Resto - Nominal - Keterangan\n"
-        "15. /catatmasuk Nominal Keterangan\n"
-        "16. /catatkeluar Nominal Keterangan\n"
-        "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan)\n"
-        "18. /spk Nama Resto - Nama Paket\n\n"
-        "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, kwitansi, SPK, hingga laporan keuangan tanpa ngetik!"
+        "3. /centangvisit Nama Resto (Tandai selesai)\n"
+        "4. /tambahposting DD/MM/YYYY Nama Konten\n"
+        "5. /editposting TglPosting NamaRestoBaru\n"
+        "6. /batalvisit DD/MM/YYYY HH:MM\n"
+        "7. /batalposting DD/MM/YYYY\n"
+        "8. /jadwalvisit - Lihat jadwal visit\n"
+        "9. /jadwalposting - Lihat antrean konten\n"
+        "10. /ratecard - Harga paket standar/event\n"
+        "11. /ratecardumkm - Harga khusus support UMKM\n"
+        "12. /sk - Syarat & Ketentuan\n"
+        "13. /invoice Nama - Item1=Harga; Item2=Harga (DP)\n"
+        "14. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
+        "15. /kwitansi Nama Resto - Nominal - Keterangan\n"
+        "16. /catatmasuk Nominal Keterangan\n"
+        "17. /catatkeluar Nominal Keterangan\n"
+        "18. /rekapbulan MM/YYYY (atau ketik /rekapbulan)\n"
+        "19. /spk Nama Resto - Nama Paket\n\n"
+        "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, centang visit, bikin kwitansi, SPK, hingga mencatat pengeluaran tanpa ngetik!"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -227,7 +223,19 @@ def handle_voice_global(message):
                 message.text = "/rekapbulan"
                 return rekap_bulan(message)
 
-        # 2. ROUTER: TAMBAH VISIT
+        # 2. ROUTER: CENTANG VISIT (Prioritas sebelum Tambah Visit)
+        elif any(kata in teks_lower for kata in ["centang", "selesai", "tandai"]) and ("visit" in teks_lower or "kunjungan" in teks_lower):
+            match_resto = re.search(r'(?:resto|di|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
+            resto = match_resto.group(1).strip() if match_resto else ""
+            
+            # Jika regex gagal, ambil sisanya saja
+            if not resto:
+                resto = teks_lower.replace("bot", "").replace("centang", "").replace("selesai", "").replace("tandai", "").replace("visit", "").replace("kunjungan", "").replace("resto", "").replace("sudah", "").replace("di", "").strip()
+                
+            message.text = f"/centangvisit {resto}"
+            return mark_done_visit(message)
+
+        # 3. ROUTER: TAMBAH VISIT
         elif any(kata in teks_lower for kata in ["visit", "kunjungan", "masukin jadwal", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:di\s+resto|di|resto|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -239,7 +247,7 @@ def handle_voice_global(message):
             message.text = f"/tambahvisit {date_str} {time_str} {resto}"
             return add_visit(message)
 
-        # 3. ROUTER: TAMBAH POSTING
+        # 4. ROUTER: TAMBAH POSTING
         elif any(kata in teks_lower for kata in ["posting", "konten"]):
             date_str, _ = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:konten|resto|untuk|tentang)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -250,7 +258,7 @@ def handle_voice_global(message):
             message.text = f"/tambahposting {date_str} {resto}"
             return add_posting(message)
 
-        # 4. ROUTER: KWITANSI
+        # 5. ROUTER: KWITANSI
         elif "kwitansi" in teks_lower:
             match_kwt = re.search(r'(?:kwitansi|resto)\s+(.+?)\s+(?:sebesar|nominal|harga)\s+(.+?)\s+(?:untuk|buat)\s+(.+)', teks_lower)
             if match_kwt:
@@ -265,7 +273,7 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format kwitansi suara salah. Coba:\n_'Bikin kwitansi resto [Nama] nominal [Angka] untuk [Keterangan]'_")
             return
 
-        # 5. ROUTER: SPK
+        # 6. ROUTER: SPK
         elif "spk" in teks_lower:
             match_spk = re.search(r'(?:spk|resto)\s+(.+?)\s+(?:dengan\s+)?(?:paket)\s+(.+)', teks_lower)
             if match_spk:
@@ -276,7 +284,7 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format SPK suara salah. Coba:\n_'Bikin SPK resto [Nama] paket [Nama Paket]'_")
             return
 
-        # 6. ROUTER: KEUANGAN (Fallback)
+        # 7. ROUTER: KEUANGAN (Fallback)
         else:
             nominal = extract_nominal(teks_lower)
             if not nominal:
@@ -306,6 +314,36 @@ def handle_voice_global(message):
         bot.reply_to(message, f"⚠️ Terjadi kesalahan sistem: {str(e)}")
 
 # --- FUNGSI STANDAR (COMMAND TEXT) ---
+@bot.message_handler(commands=['centangvisit'])
+def mark_done_visit(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/centangvisit Nama Resto")
+            return
+            
+        target_resto = parts[1].strip().lower().replace("selesai", "").replace("sudah", "").replace("centang", "").strip()
+        visits = visit_ws.get_all_records()
+        row_to_edit = None
+        resto_asli = ""
+        
+        for idx, v in enumerate(visits, start=2):
+            resto_sheet = str(v.get('Resto', '')).strip()
+            # Cek kecocokan nama resto dan pastikan belum ada logo centang
+            if (target_resto in resto_sheet.lower() or resto_sheet.lower() in target_resto) and "✅" not in resto_sheet:
+                row_to_edit = idx
+                resto_asli = resto_sheet
+                break
+                
+        if row_to_edit:
+            visit_ws.update_cell(row_to_edit, 3, f"{resto_asli} ✅")
+            bot.send_message(message.chat.id, f"✅ *Sip!* Jadwal visit ke *{resto_asli}* sudah ditandai selesai.", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"❌ Jadwal visit ke '{parts[1]}' tidak ditemukan atau sudah dicentang sebelumnya.")
+            
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
 @bot.message_handler(commands=['spk'])
 def generate_spk(message):
     try:
