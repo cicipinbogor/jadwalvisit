@@ -47,6 +47,70 @@ def safe_date_parse(date_str):
 # Daftar hari Indonesia
 HARI_INDO = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 
+# --- FUNGSI NLP PENGURAI TANGGAL & JAM ---
+def parse_tanggal_jam(teks):
+    teks_lower = teks.lower()
+    now = datetime.now()
+    date_str = None
+    time_str = None
+
+    # Deteksi Tanggal Relatif
+    if "hari ini" in teks_lower:
+        date_str = now.strftime("%d/%m/%Y")
+    elif "besok" in teks_lower:
+        date_str = (now + timedelta(days=1)).strftime("%d/%m/%Y")
+    elif "lusa" in teks_lower:
+        date_str = (now + timedelta(days=2)).strftime("%d/%m/%Y")
+    else:
+        # Deteksi Tanggal Spesifik (Cth: 12 Juni 2026 atau 12 Juni)
+        bulan_dict = {"januari": "01", "februari": "02", "maret": "03", "april": "04", "mei": "05", "juni": "06", 
+                      "juli": "07", "agustus": "08", "september": "09", "oktober": "10", "november": "11", "desember": "12"}
+        for bln_indo, bln_angka in bulan_dict.items():
+            match = re.search(fr'(?:tanggal\s+)?(\d{{1,2}})\s+{bln_indo}(?:\s+(?:tahun\s+)?(\d{{4}}))?', teks_lower)
+            if match:
+                tgl = match.group(1).zfill(2)
+                thn = match.group(2) if match.group(2) else str(now.year)
+                date_str = f"{tgl}/{bln_angka}/{thn}"
+                break
+        
+        # Deteksi Format Angka (Cth: 12/06/2026 atau tanggal 12 bulan 6)
+        if not date_str:
+            m = re.search(r'(?:tanggal\s+)?(\d{1,2})(?:/|\s+bulan\s+)(\d{1,2})(?:(?:/|\s+tahun\s+)(\d{4}))?', teks_lower)
+            if m:
+                tgl = m.group(1).zfill(2)
+                bln = m.group(2).zfill(2)
+                thn = m.group(3) if m.group(3) else str(now.year)
+                date_str = f"{tgl}/{bln}/{thn}"
+
+    # Deteksi Jam (Cth: jam 14.00, jam 2 siang, jam 8 malam)
+    match_jam = re.search(r'jam\s+(\d{1,2})(?:[\.\:\s]([0-5]\d))?\s*(pagi|siang|sore|malam)?', teks_lower)
+    if match_jam:
+        h = int(match_jam.group(1))
+        m = match_jam.group(2) if match_jam.group(2) else "00"
+        keterangan = match_jam.group(3)
+        
+        if keterangan in ['siang', 'sore'] and h < 12:
+            h += 12
+        if keterangan == 'malam' and h < 12:
+            h += 12
+        if keterangan == 'malam' and h == 12: # Mencegah 24:00 menjadi salah
+            h = 12
+            
+        time_str = f"{str(h).zfill(2)}:{m}"
+
+    return date_str, time_str
+
+# --- FUNGSI NLP PENGURAI ANGKA PINTAR ---
+def extract_nominal(teks):
+    teks_angka = teks.lower().replace("seribu", "1000").replace("sejuta", "1000000")
+    teks_angka = teks_angka.replace(" ribu", "000").replace("ribu", "000")
+    teks_angka = teks_angka.replace(" juta", "000000").replace("juta", "000000")
+    teks_angka = teks_angka.replace(".", "").replace("rupiah", "").replace(",", "")
+    angka_matches = re.findall(r'\d+', teks_angka)
+    if angka_matches:
+        return max([int(x) for x in angka_matches])
+    return None
+
 # Fungsi Reminder H-1
 def kirim_reminder_h1():
     try:
@@ -90,7 +154,6 @@ def kirim_reminder_h1():
     except Exception as e:
         print(f"Gagal memproses fungsi reminder: {str(e)}")
 
-# Setup Scheduler
 scheduler = BackgroundScheduler(timezone="Asia/Jakarta") 
 scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
 scheduler.start()
@@ -116,19 +179,18 @@ def send_welcome(message):
         "14. /kwitansi Nama Resto - Nominal - Keterangan\n"
         "15. /catatmasuk Nominal Keterangan\n"
         "16. /catatkeluar Nominal Keterangan\n"
-        "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan untuk bulan ini)\n"
+        "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan)\n"
         "18. /spk Nama Resto - Nama Paket\n\n"
-        "🎙️ *FITUR BARU:* Kirim Voice Note untuk mencatat keuangan otomatis! (Contoh: 'Catat pengeluaran bensin dua puluh ribu')"
+        "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, kwitansi, SPK, hingga laporan keuangan tanpa ngetik!"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
-# --- FITUR AI PENDENGAR SUARA UNTUK KEUANGAN ---
+# --- VOICE COMMAND ROUTER (OTAK UTAMA) ---
 @bot.message_handler(content_types=['voice'])
-def handle_voice_finance(message):
+def handle_voice_global(message):
     try:
         msg = bot.reply_to(message, "⏳ _Sedang mencerna pesan suara kamu..._", parse_mode="Markdown")
         
-        # Download file audio OGG dari Telegram
         file_info = bot.get_file(message.voice.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
@@ -138,69 +200,112 @@ def handle_voice_finance(message):
         with open(ogg_path, 'wb') as new_file:
             new_file.write(downloaded_file)
             
-        # Konversi OGG ke WAV agar bisa dibaca Google STT
         audio = AudioSegment.from_file(ogg_path, format="ogg")
         audio.export(wav_path, format="wav")
         
-        # Proses Transkrip Suara ke Teks
         r = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = r.record(source)
             teks_hasil = r.recognize_google(audio_data, language="id-ID")
         
-        # Hapus file mentahan agar server Railway tidak penuh
         os.remove(ogg_path)
         os.remove(wav_path)
         
         teks_lower = teks_hasil.lower()
-        
-        # --- PERBAIKAN NLP PENCATAT ANGKA PINTAR ---
-        # 1. Terjemahkan kata khusus dulu
-        teks_angka = teks_lower.replace("seribu", "1000").replace("sejuta", "1000000")
-        
-        # 2. Hilangkan spasi sebelum "ribu" agar menempel dengan angka di depannya (cth: "50 ribu" -> "50000")
-        teks_angka = teks_angka.replace(" ribu", "000").replace("ribu", "000")
-        teks_angka = teks_angka.replace(" juta", "000000").replace("juta", "000000")
-        
-        # 3. Bersihkan titik dan kata mata uang
-        teks_angka = teks_angka.replace(".", "").replace("rupiah", "").replace(",", "")
-        
-        # 4. Cari SEMUA angka di dalam kalimat
-        angka_matches = re.findall(r'\d+', teks_angka)
-        
-        if not angka_matches:
-            bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n\n⚠️ *Gagal Mencatat:* Bot tidak menemukan nominal angka yang jelas. Coba sebutkan angkanya lebih tegas.", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
-            return
+        bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n🚀 _Memproses perintah..._", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+
+        # 1. ROUTER: TAMBAH VISIT
+        if "tambah visit" in teks_lower or "jadwalin visit" in teks_lower:
+            date_str, time_str = parse_tanggal_jam(teks_lower)
+            match_resto = re.search(r'(?:di|resto|namanya)\s+(.+)', teks_lower)
+            resto = match_resto.group(1).title() if match_resto else "Resto Baru"
             
-        # 5. Ambil angka TERBESAR dari seluruh kalimat (Pintar menyortir jumlah barang vs harga)
-        nominal = max([int(x) for x in angka_matches])
-        
-        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
-        
-        # Menebak ini uang masuk atau keluar dari konteks kalimat
-        if any(kata in teks_lower for kata in ["masuk", "pemasukan", "terima", "dp", "pelunasan"]):
-            jenis = "Pemasukan"
-        elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan", "jajan"]):
-            jenis = "Pengeluaran"
+            if not date_str: date_str = datetime.now().strftime("%d/%m/%Y")
+            if not time_str: time_str = "12:00"
+            
+            message.text = f"/tambahvisit {date_str} {time_str} {resto}"
+            return add_visit(message)
+
+        # 2. ROUTER: TAMBAH POSTING
+        elif "tambah posting" in teks_lower or "jadwalin posting" in teks_lower:
+            date_str, _ = parse_tanggal_jam(teks_lower)
+            match_resto = re.search(r'(?:konten|resto|untuk)\s+(.+)', teks_lower)
+            resto = match_resto.group(1).title() if match_resto else "Konten Baru"
+            
+            if not date_str: date_str = datetime.now().strftime("%d/%m/%Y")
+            
+            message.text = f"/tambahposting {date_str} {resto}"
+            return add_posting(message)
+
+        # 3. ROUTER: KWITANSI
+        elif "bikin kwitansi" in teks_lower or "buat kwitansi" in teks_lower:
+            match_kwt = re.search(r'(?:kwitansi|resto)\s+(.+?)\s+(?:sebesar|nominal|harga)\s+(.+?)\s+(?:untuk|buat)\s+(.+)', teks_lower)
+            if match_kwt:
+                resto = match_kwt.group(1).title()
+                nom_str = match_kwt.group(2)
+                ket = match_kwt.group(3).capitalize()
+                nominal_kwt = extract_nominal(nom_str)
+                
+                if nominal_kwt:
+                    message.text = f"/kwitansi {resto} - {nominal_kwt} - {ket}"
+                    return generate_kwitansi(message)
+            bot.send_message(message.chat.id, "⚠️ Format kwitansi suara salah. Coba:\n_'Bikin kwitansi resto [Nama] nominal [Angka] untuk [Keterangan]'_")
+            return
+
+        # 4. ROUTER: SPK
+        elif "bikin spk" in teks_lower or "buat spk" in teks_lower:
+            match_spk = re.search(r'(?:spk|resto)\s+(.+?)\s+(?:dengan\s+)?(?:paket)\s+(.+)', teks_lower)
+            if match_spk:
+                resto = match_spk.group(1).title()
+                paket = "Paket " + match_spk.group(2).title()
+                message.text = f"/spk {resto} - {paket}"
+                return generate_spk(message)
+            bot.send_message(message.chat.id, "⚠️ Format SPK suara salah. Coba:\n_'Bikin SPK resto [Nama] paket [Nama Paket]'_")
+            return
+
+        # 5. ROUTER: CEK JADWAL & REKAP
+        elif "lihat jadwal visit" in teks_lower or "cek jadwal visit" in teks_lower:
+            message.text = "/jadwalvisit"
+            return list_visit(message)
+            
+        elif "lihat jadwal posting" in teks_lower or "cek jadwal posting" in teks_lower:
+            message.text = "/jadwalposting"
+            return list_posting(message)
+            
+        elif "rekap bulan" in teks_lower or "rekap keuangan" in teks_lower:
+            message.text = "/rekapbulan"
+            return rekap_bulan(message)
+
+        # 6. ROUTER: KEUANGAN (Fallback)
         else:
-            bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n\n⚠️ *Gagal Mencatat:* Bot bingung ini uang masuk atau keluar. Tolong sebutkan kata 'Pemasukan' atau 'Pengeluaran'.", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
-            return
+            nominal = extract_nominal(teks_lower)
+            if not nominal:
+                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali sebagai perintah sistem yang sah.")
+                return
+                
+            tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
             
-        # Simpan ke Google Sheets
-        keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
-        
-        # Balasan sukses
-        icon = "✅" if jenis == "Pemasukan" else "📉"
-        reply_sukses = f"{icon} *{jenis} Dicatat via Suara!*\n\n🗣️ _\"{teks_hasil}\"_\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}"
-        bot.edit_message_text(reply_sukses, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
-        
+            if any(kata in teks_lower for kata in ["masuk", "pemasukan", "terima", "dp", "pelunasan"]):
+                jenis = "Pemasukan"
+                keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
+                bot.send_message(message.chat.id, f"✅ *Pemasukan Dicatat via Suara!*\n\n📅 Tanggal: {tgl_sekarang}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {teks_hasil.capitalize()}", parse_mode="Markdown")
+            
+            elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan", "jajan"]):
+                jenis = "Pengeluaran"
+                keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
+                bot.send_message(message.chat.id, f"📉 *Pengeluaran Dicatat via Suara!*\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}\n📝 Ket: {teks_hasil.capitalize()}", parse_mode="Markdown")
+            
+            else:
+                bot.send_message(message.chat.id, "⚠️ Bot menemukan angka, tapi bingung ini uang masuk atau keluar. Tolong sebutkan 'Pemasukan' atau 'Pengeluaran'.")
+
     except sr.UnknownValueError:
         bot.reply_to(message, "⚠️ Bot tidak bisa mendengar suara dengan jelas. Coba ulangi pelan-pelan ya.")
     except sr.RequestError as e:
-        bot.reply_to(message, f"⚠️ Layanan pengenalan suara Google sedang gangguan: {e}")
+        bot.reply_to(message, f"⚠️ Layanan pengenalan suara sedang gangguan: {e}")
     except Exception as e:
         bot.reply_to(message, f"⚠️ Terjadi kesalahan sistem: {str(e)}")
 
+# --- FUNGSI STANDAR (COMMAND TEXT) ---
 @bot.message_handler(commands=['spk'])
 def generate_spk(message):
     try:
@@ -220,7 +325,6 @@ def generate_spk(message):
         pdf = FPDF()
         pdf.add_page()
 
-        # Header
         if os.path.exists("logo.png"):
             pdf.image("logo.png", x=10, y=2, w=32)
             pdf.set_xy(45, 10)
@@ -244,19 +348,16 @@ def generate_spk(message):
         pdf.set_text_color(120, 120, 120)
         pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
 
-        # Garis
         pdf.ln(3)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(10)
 
-        # Judul SPK
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "B", 14)
         pdf.cell(0, 8, "SURAT PERJANJIAN KERJA SAMA (MoU)", ln=True, align="C")
         pdf.ln(8)
 
-        # Isi Surat
         pdf.set_font("helvetica", "", 11)
         teks_pembuka = f"Pada hari ini, tanggal {tgl_sekarang}, disepakati kesepakatan kerja sama promosi digital (Food Vlogger Review) antara:"
         pdf.multi_cell(0, 6, teks_pembuka)
@@ -276,7 +377,6 @@ def generate_spk(message):
         pdf.multi_cell(0, 6, f"Kedua belah pihak sepakat untuk bekerja sama dalam pembuatan konten review kuliner dengan rincian paket: {paket}. Berikut adalah syarat dan ketentuan yang mengikat kedua belah pihak secara sah:")
         pdf.ln(4)
 
-        # Pasal-Pasal
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(0, 6, "Pasal 1: Proses Liputan & Hak Konten", ln=True)
         pdf.set_font("helvetica", "", 11)
@@ -295,14 +395,12 @@ def generate_spk(message):
         pdf.multi_cell(0, 6, "- Pihak Kedua berhak mendapat revisi video maksimal 1x (hanya berlaku untuk revisi minor berupa ralat teks harga, alamat, atau penulisan nama).\n- Hak Cipta video sepenuhnya merupakan milik Pihak Pertama (Cicipin Bogor).\n- Pihak Kedua DILARANG KERAS MENGUNGGAH ULANG (re-upload) video utuh ke platform manapun (TikTok, IG, FB) tanpa membeli opsi Hak Milik (Owning Content) terlebih dahulu. Pihak Kedua hanya diperbolehkan melakukan fitur 'Share' atau 'Collab'.")
         pdf.ln(12)
 
-        # Area Tanda Tangan
         pdf.set_font("helvetica", "", 11)
         pdf.cell(95, 6, "Pihak Pertama,", 0, 0, "C")
         pdf.cell(95, 6, "Pihak Kedua,", 0, 1, "C")
 
         y_ttd = pdf.get_y()
 
-        # Tempel Tanda Tangan Pihak Pertama (Cicipin Bogor)
         ttd_file = None
         for ext in ["ttd.png", "ttd.jpg", "TTD.png"]:
             if os.path.exists(ext):
@@ -312,16 +410,15 @@ def generate_spk(message):
         if ttd_file:
             pdf.image(ttd_file, x=45, y=y_ttd + 2, w=25)
 
-        pdf.ln(25) # Spasi tinggi TTD
+        pdf.ln(25) 
 
         pdf.set_font("helvetica", "BU", 11)
         pdf.cell(95, 6, "Cicipin Bogor", 0, 0, "C")
         pdf.cell(95, 6, f"{resto}", 0, 1, "C")
 
-        # Simpan file
         pdf.output(pdf_filename)
 
-        bot.reply_to(message, "⏳ Sedang menyusun Surat Perjanjian Kerja Sama (SPK)...")
+        bot.send_message(message.chat.id, "⏳ Sedang menyusun Surat Perjanjian Kerja Sama (SPK)...")
 
         caption_text = f"✅ *SPK Sukses Dibuat!*\n\n📄 Klien: {resto}\n📦 Paket: {paket}\n\n_File PDF SPK di atas bisa langsung kamu forward ke pihak resto agar mereka paham aturan main & hak cipta video Cicipin Bogor._"
 
@@ -339,7 +436,7 @@ def catat_masuk(message):
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/catatmasuk Nominal Keterangan\n\nContoh: /catatmasuk 400000 DP Bakso Mercon")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/catatmasuk Nominal Keterangan")
             return
             
         nominal = int(parts[1].replace('.', '').replace('Rp', '').strip())
@@ -350,7 +447,7 @@ def catat_masuk(message):
         
         bot.reply_to(message, f"✅ *Pemasukan Dicatat!*\n\n📅 Tanggal: {tgl_sekarang}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}", parse_mode='Markdown')
     except ValueError:
-        bot.reply_to(message, "⚠️ Nominal harus berupa angka (contoh: 400000).")
+        bot.reply_to(message, "⚠️ Nominal harus berupa angka.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
 
@@ -359,7 +456,7 @@ def catat_keluar(message):
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/catatkeluar Nominal Keterangan\n\nContoh: /catatkeluar 15000 Parkir CCB")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/catatkeluar Nominal Keterangan")
             return
             
         nominal = int(parts[1].replace('.', '').replace('Rp', '').strip())
@@ -370,7 +467,7 @@ def catat_keluar(message):
         
         bot.reply_to(message, f"📉 *Pengeluaran Dicatat!*\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}", parse_mode='Markdown')
     except ValueError:
-        bot.reply_to(message, "⚠️ Nominal harus berupa angka (contoh: 15000).")
+        bot.reply_to(message, "⚠️ Nominal harus berupa angka.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
 
@@ -429,7 +526,7 @@ def rekap_bulan(message):
         else:
             reply += "_Belum ada catatan keuangan untuk bulan ini._"
             
-        bot.reply_to(message, reply, parse_mode='Markdown')
+        bot.send_message(message.chat.id, reply, parse_mode='Markdown')
         
     except ValueError:
         bot.reply_to(message, "⚠️ Format bulan salah. Gunakan MM/YYYY (contoh: /rekapbulan 06/2026)")
@@ -441,7 +538,7 @@ def generate_kwitansi(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/kwitansi Nama Resto - Nominal - Keterangan\n\nContoh:\n/kwitansi Brano Pizzeria - 800000 - Pelunasan Paket Gacor")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/kwitansi Nama Resto - Nominal - Keterangan")
             return
             
         subparts = parts[1].split('-')
@@ -459,11 +556,9 @@ def generate_kwitansi(message):
         
         pdf_filename = f"Kwitansi_{resto.replace(' ', '_')}.pdf"
         
-        # --- PROSES PEMBUATAN PDF KWITANSI ---
         pdf = FPDF()
         pdf.add_page()
         
-        # Header
         if os.path.exists("logo.png"):
             pdf.image("logo.png", x=10, y=2, w=32)
             pdf.set_xy(45, 10)
@@ -487,19 +582,16 @@ def generate_kwitansi(message):
         pdf.set_text_color(120, 120, 120)
         pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
         
-        # Garis
         pdf.ln(3)
         pdf.set_draw_color(200, 200, 200)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(12)
         
-        # Judul Kwitansi
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("helvetica", "B", 18)
         pdf.cell(0, 10, "KWITANSI PEMBAYARAN", ln=True, align="C")
         pdf.ln(8)
         
-        # Isi Kwitansi
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(45, 8, "No. Kwitansi", 0, 0)
         pdf.set_font("helvetica", "", 11)
@@ -523,7 +615,6 @@ def generate_kwitansi(message):
         pdf.multi_cell(0, 8, f": {keterangan}")
         pdf.ln(15)
         
-        # Area Tanda Tangan / Stamp
         pdf.set_font("helvetica", "", 11)
         pdf.cell(120, 6, "", 0, 0)
         pdf.cell(70, 6, f"Bogor, {tgl_sekarang}", 0, 1, "C")
@@ -558,10 +649,9 @@ def generate_kwitansi(message):
         pdf.cell(120, 6, "", 0, 0)
         pdf.cell(70, 4, "Verified Official Receipt", 0, 1, "C")
         
-        # Simpan file
         pdf.output(pdf_filename)
         
-        bot.reply_to(message, "⏳ Sedang mencetak Kwitansi Resmi dengan Stempel LUNAS...")
+        bot.send_message(message.chat.id, "⏳ Sedang mencetak Kwitansi Resmi dengan Stempel LUNAS...")
         
         caption_text = f"✅ *Kwitansi Sukses Dibuat!*\n\n📄 Klien: {resto}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}\n\n_File PDF Kwitansi di atas siap di-forward ke klien sebagai bukti lunas._"
         
@@ -589,11 +679,11 @@ def send_ratecard(message):
         "• Harga: Rp 500.000\n\n"
         "🚀 *PAKET GACOR (Grand Opening / Event)*\n"
         "• 1x Visit & Liputan Prioritas\n"
-        "• 1x Video (TikTok & IG Reels)\n"
+        "• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi\n"
         "• ✨ *FREE Collab on Instagram*\n"
         "• Keep video permanent\n"
         "• Prioritas jadwal upload\n"
-        "• Harga: Rp 700.000\n\n"
+        "• Harga: Rp 800.000\n\n"
         "➕ *ADDITIONAL MENU*\n"
         "• *Owning Content (Hak Milik Video):*\n"
         "  - Kualitas 2K: +Rp 200.000\n"
@@ -648,12 +738,10 @@ def send_sk(message):
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
-# Fungsi dasar untuk merancang struktur PDF Invoice
 def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
     pdf = FPDF()
     pdf.add_page()
     
-    # --- HEADER ---
     if os.path.exists("logo.png"):
         pdf.image("logo.png", x=10, y=2, w=32)
         pdf.set_xy(45, 10)
@@ -671,20 +759,17 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
     
-    # INFO KONTAK TAMBAHAN DI BAWAH HEADER
     if os.path.exists("logo.png"):
         pdf.set_x(45)
     pdf.set_font("helvetica", "I", 9)
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
     
-    # Garis pemisah header
     pdf.ln(3)
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(10)
     
-    # --- INVOICE TITLE & INFO ---
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("helvetica", "B", 18)
     pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True)
@@ -706,7 +791,6 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.cell(60, 6, f": {tgl_sekarang}", 0, 1)
     pdf.ln(10)
     
-    # --- TABEL RINCIAN HARGA ---
     pdf.set_font("helvetica", "B", 11)
     pdf.set_fill_color(240, 240, 240) 
     pdf.set_draw_color(180, 180, 180)
@@ -719,24 +803,20 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
         pdf.cell(70, 10, f"Rp {item['price']:,.0f}", border=1, ln=True, align="R")
     
     if not is_full_payment:
-        # Baris Total Keseluruhan
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
         pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
         
-        # Baris DP 50%
         dp_harga = int(total_harga * 0.5)
         pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
         pdf.cell(70, 10, f"Rp {dp_harga:,.0f}", border=1, ln=True, align="R")
     else:
-        # Baris Total Jatuh Tempo
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(120, 10, "Total Tagihan (Pembayaran Penuh / Full)", border=1, align="R", fill=True)
         pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
         
     pdf.ln(15)
     
-    # --- INFORMASI PEMBAYARAN ---
     pdf.set_font("helvetica", "B", 11)
     pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
     
@@ -746,7 +826,6 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.cell(0, 6, "- Atas Nama: Afrizal", ln=True)
     pdf.ln(15)
     
-    # --- FOOTER ---
     pdf.set_font("helvetica", "I", 9)
     pdf.set_text_color(150, 150, 150)
     if not is_full_payment:
@@ -763,7 +842,7 @@ def generate_invoice(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Item1=Harga1; Item2=Harga2\n\nContoh:\n/invoice Brano Pizzeria - Pkt Gacor=800000; 2x Story=50000")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Item1=Harga1; Item2=Harga2")
             return
         
         main_parts = parts[1].split('-', 1)
@@ -819,7 +898,7 @@ def generate_invoice_full(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoicefull Nama Resto - Item1=Harga1; Item2=Harga2\n\nContoh:\n/invoicefull Brano Pizzeria - Pkt Gacor=800000; 2x Story=50000")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoicefull Nama Resto - Item1=Harga1; Item2=Harga2")
             return
         
         main_parts = parts[1].split('-', 1)
@@ -917,12 +996,12 @@ def add_visit(message):
         post_date_str = post_date.strftime("%d/%m/%Y")
         post_ws.append_row([post_date_str, resto_name])
 
-        bot.reply_to(message, f"✅ Berhasil!\n\n🎥 Visit {resto_name} dijadwalkan pada {date_str} {time_str}.\n🗓 Jadwal posting otomatis masuk antrean tanggal {post_date_str}.")
+        bot.send_message(message.chat.id, f"✅ Berhasil!\n\n🎥 Visit {resto_name} dijadwalkan pada {date_str} {time_str}.\n🗓 Jadwal posting otomatis masuk antrean tanggal {post_date_str}.")
 
     except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
+        bot.send_message(message.chat.id, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
     except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+        bot.send_message(message.chat.id, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['tambahposting'])
 def add_posting(message):
@@ -945,12 +1024,12 @@ def add_posting(message):
                 return
 
         post_ws.append_row([date_str, resto_name])
-        bot.reply_to(message, f"✅ Berhasil!\n\n🚀 Jadwal posting konten {resto_name} berhasil ditambahkan pada tanggal {date_str}.")
+        bot.send_message(message.chat.id, f"✅ Berhasil!\n\n🚀 Jadwal posting konten {resto_name} ditambahkan pada tanggal {date_str}.")
 
     except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
+        bot.send_message(message.chat.id, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
     except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+        bot.send_message(message.chat.id, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['editvisit'])
 def edit_visit(message):
@@ -1126,9 +1205,9 @@ def list_visit(message):
                 reply += f"• {nama_hari}, {tgl_str} | {jam} - {resto}\n"
         
         if reply == "📌 List Jadwal Visit:\n\n":
-            bot.reply_to(message, "Belum ada jadwal visit yang terdaftar.")
+            bot.send_message(message.chat.id, "Belum ada jadwal visit yang terdaftar.")
         else:
-            bot.reply_to(message, reply)
+            bot.send_message(message.chat.id, reply)
             
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
@@ -1152,9 +1231,9 @@ def list_posting(message):
                 reply += f"• {nama_hari}, {tgl_str} - Konten: {resto}\n"
         
         if reply == "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n":
-            bot.reply_to(message, "Belum ada antrean jadwal posting.")
+            bot.send_message(message.chat.id, "Belum ada antrean jadwal posting.")
         else:
-            bot.reply_to(message, reply)
+            bot.send_message(message.chat.id, reply)
             
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
