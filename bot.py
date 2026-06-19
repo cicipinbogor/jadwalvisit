@@ -34,6 +34,9 @@ def safe_date_parse(date_str):
     except:
         return datetime.min
 
+# Daftar hari Indonesia
+HARI_INDO = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+
 # Fungsi Reminder H-1
 def kirim_reminder_h1():
     try:
@@ -174,7 +177,7 @@ def send_sk(message):
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
-# Fungsi dasar untuk merancang struktur PDF Invoice agar tidak menulis kode ganda
+# Fungsi dasar untuk merancang struktur PDF Invoice
 def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
     pdf = FPDF()
     pdf.add_page()
@@ -245,7 +248,7 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
         pdf.cell(70, 10, f"Rp {item['price']:,.0f}", border=1, ln=True, align="R")
     
     if not is_full_payment:
-        # Baris Total Keseluruhan (Jika sistem cicilan / DP)
+        # Baris Total Keseluruhan
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
         pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
@@ -255,7 +258,7 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
         pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
         pdf.cell(70, 10, f"Rp {dp_harga:,.0f}", border=1, ln=True, align="R")
     else:
-        # Baris Total Jatuh Tempo (Langsung 100% Full)
+        # Baris Total Jatuh Tempo
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(120, 10, "Total Tagihan (Pembayaran Penuh / Full)", border=1, align="R", fill=True)
         pdf.cell(70, 10, f"Rp {total_harga:,.0f}", border=1, ln=True, align="R", fill=True)
@@ -315,7 +318,6 @@ def generate_invoice(message):
         
         pdf_filename = f"Invoice_{resto.replace(' ', '_')}.pdf"
         
-        # Cetak PDF versi DP
         pdf = build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False)
         pdf.output(pdf_filename)
         
@@ -368,7 +370,6 @@ def generate_invoice_full(message):
         
         pdf_filename = f"Invoice_Full_{resto.replace(' ', '_')}.pdf"
         
-        # Cetak PDF versi FULL 100% tanpa tulisan DP
         pdf = build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=True)
         pdf.output(pdf_filename)
         
@@ -610,8 +611,14 @@ def list_visit(message):
         
         reply = "📌 List Jadwal Visit:\n\n"
         for v in sorted(visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', '')))):
-            if v.get('Tanggal') and str(v.get('Resto', '')).lower() != 'dummy':
-                reply += f"• {v['Tanggal']} | {v['Jam']} - {v['Resto']}\n"
+            tgl_str = str(v.get('Tanggal', '')).strip()
+            resto = str(v.get('Resto', '')).strip()
+            jam = str(v.get('Jam', '')).strip()
+            
+            if tgl_str and resto.lower() != 'dummy':
+                dt = safe_date_parse(tgl_str)
+                nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
+                reply += f"• {nama_hari}, {tgl_str} | {jam} - {resto}\n"
         
         if reply == "📌 List Jadwal Visit:\n\n":
             bot.reply_to(message, "Belum ada jadwal visit yang terdaftar.")
@@ -631,8 +638,13 @@ def list_posting(message):
         
         reply = "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n"
         for p in sorted(posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', ''))):
-            if p.get('TanggalPosting') and str(p.get('Resto', '')).lower() != 'dummy':
-                reply += f"• {p['TanggalPosting']} - Konten: {p['Resto']}\n"
+            tgl_str = str(p.get('TanggalPosting', '')).strip()
+            resto = str(p.get('Resto', '')).strip()
+            
+            if tgl_str and resto.lower() != 'dummy':
+                dt = safe_date_parse(tgl_str)
+                nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
+                reply += f"• {nama_hari}, {tgl_str} - Konten: {resto}\n"
         
         if reply == "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n":
             bot.reply_to(message, "Belum ada antrean jadwal posting.")
