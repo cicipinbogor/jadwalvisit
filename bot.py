@@ -44,8 +44,9 @@ def safe_date_parse(date_str):
     except:
         return datetime.min
 
-# Daftar hari Indonesia
+# Daftar hari & Bulan Indonesia
 HARI_INDO = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+BULAN_INDO = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
 # --- FUNGSI NLP PENGURAI TANGGAL & JAM ---
 def parse_tanggal_jam(teks):
@@ -185,7 +186,7 @@ def send_welcome(message):
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
-# --- VOICE COMMAND ROUTER (OTAK UTAMA YANG SUDAH DIPERBAIKI) ---
+# --- VOICE COMMAND ROUTER (OTAK UTAMA) ---
 @bot.message_handler(content_types=['voice'])
 def handle_voice_global(message):
     try:
@@ -229,7 +230,6 @@ def handle_voice_global(message):
         # 2. ROUTER: TAMBAH VISIT
         elif any(kata in teks_lower for kata in ["visit", "kunjungan", "masukin jadwal", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
-            # Ambil sisa teks sebagai nama resto (Biasakan sebut nama resto di akhir)
             match_resto = re.search(r'(?:di\s+resto|di|resto|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
             resto = match_resto.group(1).strip().title() if match_resto else "Resto Baru"
             
@@ -285,7 +285,6 @@ def handle_voice_global(message):
                 
             tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
             
-            # Kata pemicu diperketat agar "masukin" tidak memicu ini
             if any(kata in teks_lower for kata in ["pemasukan", "terima uang", "terima dp", "pelunasan", "bayaran", "cair", "uang masuk"]):
                 jenis = "Pemasukan"
                 keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
@@ -1191,10 +1190,12 @@ def list_visit(message):
     try:
         visits = visit_ws.get_all_records()
         if not visits:
-            bot.reply_to(message, "Belum ada jadwal visit yang terdaftar.")
+            bot.send_message(message.chat.id, "Belum ada jadwal visit yang terdaftar.")
             return
+            
+        reply = "📌 *List Jadwal Visit:*\n\n"
+        current_date = ""
         
-        reply = "📌 List Jadwal Visit:\n\n"
         for v in sorted(visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', '')))):
             tgl_str = str(v.get('Tanggal', '')).strip()
             resto = str(v.get('Resto', '')).strip()
@@ -1202,16 +1203,26 @@ def list_visit(message):
             
             if tgl_str and resto.lower() != 'dummy':
                 dt = safe_date_parse(tgl_str)
-                nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
-                reply += f"• {nama_hari}, {tgl_str} | {jam} - {resto}\n"
+                if dt != datetime.min:
+                    nama_hari = HARI_INDO[dt.weekday()]
+                    nama_bulan = BULAN_INDO[dt.month - 1]
+                    header_tanggal = f"{nama_hari} {dt.day} {nama_bulan}"
+                    
+                    if header_tanggal != current_date:
+                        if current_date != "":
+                            reply += "\n" 
+                        reply += f"*{header_tanggal}*\n"
+                        current_date = header_tanggal
+                        
+                    reply += f"• {resto} {jam}\n"
         
-        if reply == "📌 List Jadwal Visit:\n\n":
+        if reply == "📌 *List Jadwal Visit:*\n\n":
             bot.send_message(message.chat.id, "Belum ada jadwal visit yang terdaftar.")
         else:
-            bot.send_message(message.chat.id, reply)
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown')
             
     except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+        bot.send_message(message.chat.id, f"Terjadi kesalahan: {str(e)}")
 
 @bot.message_handler(commands=['jadwalposting'])
 def list_posting(message):
