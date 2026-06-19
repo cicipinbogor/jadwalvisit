@@ -94,10 +94,11 @@ def send_welcome(message):
         "5. /batalposting DD/MM/YYYY\n"
         "6. /jadwalvisit - Lihat jadwal visit\n"
         "7. /jadwalposting - Lihat antrean konten\n"
-        "8. /ratecard - Template harga paket\n"
-        "9. /sk - Template Syarat & Ketentuan\n"
-        "10. /invoice Nama Resto - Item1=Harga, Item2=Harga (Versi DP 50%)\n"
-        "11. /invoicefull Nama Resto - Item1=Harga, Item2=Harga (Versi Lunas 100%)"
+        "8. /ratecard - Harga paket standar/event\n"
+        "9. /ratecardumkm - Harga khusus support UMKM\n"
+        "10. /sk - Syarat & Ketentuan\n"
+        "11. /invoice Nama Resto - Item1=Harga, Item2=Harga (Versi DP)\n"
+        "12. /invoicefull Nama Resto - Item1=Harga, Item2=Harga (Versi Lunas)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -130,6 +131,24 @@ def send_ratecard(message):
         "• Harga berlaku untuk wilayah Bogor & sekitarnya.\n"
         "• Untuk Syarat & Ketentuan lengkap silakan ketik /sk\n\n"
         "Silakan balas pesan ini jika ada paket yang sesuai atau ingin berdiskusi lebih lanjut! 🙏"
+    )
+    bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['ratecardumkm'])
+def send_ratecard_umkm(message):
+    teks = (
+        "🤝 *RATE CARD KHUSUS UMKM*\n\n"
+        "Halo! Sebagai bentuk *support* untuk usaha rintisan dan UMKM kuliner lokal, Cicipin Bogor menyediakan paket penawaran khusus yang lebih terjangkau:\n\n"
+        "🌱 *PAKET SUPPORT UMKM*\n"
+        "• 1x Visit & Liputan Outlet\n"
+        "• 1x Video tayang di IG Reels (termasuk mirroring ke TikTok)\n"
+        "• Keep video permanent\n"
+        "• Harga Khusus: *Rp 400.000*\n\n"
+        "📌 *Catatan:*\n"
+        "• Harga khusus ini berlaku untuk bisnis skala kecil/menengah di wilayah Bogor & sekitarnya.\n"
+        "• Jadwal upload akan disesuaikan dengan antrean slot reguler.\n"
+        "• Untuk Syarat & Ketentuan lengkap silakan ketik /sk\n\n"
+        "Mari maju bersama memajukan kuliner lokal! Silakan balas pesan ini untuk menentukan jadwal visit. 🙏"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -572,7 +591,7 @@ def cancel_posting(message):
             bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan.")
             return
 
-        post_ws.update_cell(row_to_delete, 2, resto_name) # dummy fix jika baris tidak terhapus sempurna
+        post_ws.update_cell(row_to_delete, 2, resto_name)
         post_ws.delete_rows(row_to_delete)
         bot.reply_to(message, f"🗑 Jadwal posting untuk {resto_name} pada tanggal {post_date} berhasil dibatalkan.")
 
