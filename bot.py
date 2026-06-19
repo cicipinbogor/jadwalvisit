@@ -28,6 +28,13 @@ sheet = client.open_by_key(SHEET_ID)
 visit_ws = sheet.worksheet('Visit')
 post_ws = sheet.worksheet('Posting')
 
+# Cek dan buat otomatis sheet 'Keuangan' jika belum ada
+try:
+    keuangan_ws = sheet.worksheet('Keuangan')
+except gspread.exceptions.WorksheetNotFound:
+    keuangan_ws = sheet.add_worksheet(title="Keuangan", rows="1000", cols="4")
+    keuangan_ws.append_row(["Tanggal", "Jenis", "Nominal", "Keterangan"])
+
 def safe_date_parse(date_str):
     try:
         return datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
@@ -101,10 +108,173 @@ def send_welcome(message):
         "9. /ratecard - Harga paket standar/event\n"
         "10. /ratecardumkm - Harga khusus support UMKM\n"
         "11. /sk - Syarat & Ketentuan\n"
-        "12. /invoice Nama Resto - Item1=Harga; Item2=Harga (Versi DP)\n"
-        "13. /invoicefull Nama Resto - Item1=Harga; Item2=Harga (Versi Lunas)"
+        "12. /invoice Nama - Item1=Harga; Item2=Harga (DP)\n"
+        "13. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
+        "14. /kwitansi Nama Resto - Nominal - Keterangan\n"
+        "15. /catatmasuk Nominal Keterangan\n"
+        "16. /catatkeluar Nominal Keterangan"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['catatmasuk'])
+def catat_masuk(message):
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/catatmasuk Nominal Keterangan\n\nContoh: /catatmasuk 400000 DP Bakso Mercon")
+            return
+            
+        nominal = int(parts[1].replace('.', '').replace('Rp', '').strip())
+        keterangan = parts[2]
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        keuangan_ws.append_row([tgl_sekarang, "Pemasukan", nominal, keterangan])
+        
+        bot.reply_to(message, f"✅ *Pemasukan Dicatat!*\n\n📅 Tanggal: {tgl_sekarang}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}", parse_mode='Markdown')
+    except ValueError:
+        bot.reply_to(message, "⚠️ Nominal harus berupa angka (contoh: 400000).")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['catatkeluar'])
+def catat_keluar(message):
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/catatkeluar Nominal Keterangan\n\nContoh: /catatkeluar 15000 Parkir CCB")
+            return
+            
+        nominal = int(parts[1].replace('.', '').replace('Rp', '').strip())
+        keterangan = parts[2]
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        keuangan_ws.append_row([tgl_sekarang, "Pengeluaran", nominal, keterangan])
+        
+        bot.reply_to(message, f"📉 *Pengeluaran Dicatat!*\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}", parse_mode='Markdown')
+    except ValueError:
+        bot.reply_to(message, "⚠️ Nominal harus berupa angka (contoh: 15000).")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['kwitansi'])
+def generate_kwitansi(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or '-' not in parts[1]:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/kwitansi Nama Resto - Nominal - Keterangan\n\nContoh:\n/kwitansi Brano Pizzeria - 800000 - Pelunasan Paket Gacor")
+            return
+            
+        subparts = parts[1].split('-')
+        if len(subparts) < 3:
+            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama, Nominal, dan Keterangan dipisah tanda strip (-).")
+            return
+            
+        resto = subparts[0].strip()
+        nominal_str = subparts[1].strip().replace('.', '').replace('Rp', '').strip()
+        keterangan = subparts[2].strip()
+        
+        nominal = int(nominal_str)
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        no_kwt = f"KWT/CCPN/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
+        
+        pdf_filename = f"Kwitansi_{resto.replace(' ', '_')}.pdf"
+        
+        # --- PROSES PEMBUATAN PDF KWITANSI ---
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Header
+        if os.path.exists("logo.png"):
+            pdf.image("logo.png", x=10, y=2, w=32)
+            pdf.set_xy(45, 10)
+        else:
+            pdf.set_xy(10, 10)
+            
+        pdf.set_font("helvetica", "B", 24)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 8, "Cicipin Bogor", ln=True)
+        
+        if os.path.exists("logo.png"):
+            pdf.set_x(45)
+            
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
+        
+        if os.path.exists("logo.png"):
+            pdf.set_x(45)
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(120, 120, 120)
+        pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
+        
+        # Garis
+        pdf.ln(3)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(12)
+        
+        # Judul Kwitansi
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("helvetica", "B", 18)
+        pdf.cell(0, 10, "KWITANSI PEMBAYARAN", ln=True, align="C")
+        pdf.ln(8)
+        
+        # Isi Kwitansi
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "No. Kwitansi", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 8, f": {no_kwt}", ln=True)
+        
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "Telah Terima Dari", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 8, f": {resto}", ln=True)
+        
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "Uang Sejumlah", 0, 0)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.set_text_color(0, 100, 0) # Warna hijau gelap untuk nominal
+        pdf.cell(0, 8, f": Rp {nominal:,.0f}", ln=True)
+        
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "Untuk Pembayaran", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.multi_cell(0, 8, f": {keterangan}")
+        pdf.ln(15)
+        
+        # Area Tanda Tangan / Stamp
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(120, 6, "", 0, 0)
+        pdf.cell(70, 6, f"Bogor, {tgl_sekarang}", 0, 1, "C")
+        
+        pdf.ln(15) # Spasi stempel
+        
+        pdf.set_font("helvetica", "BU", 11)
+        pdf.cell(120, 6, "", 0, 0)
+        pdf.cell(70, 6, "Cicipin Bogor", 0, 1, "C")
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(150, 150, 150)
+        pdf.cell(120, 6, "", 0, 0)
+        pdf.cell(70, 4, "Verified Official Receipt", 0, 1, "C")
+        
+        # Simpan file
+        pdf.output(pdf_filename)
+        
+        bot.reply_to(message, "⏳ Sedang mencetak Kwitansi Resmi...")
+        
+        caption_text = f"✅ *Kwitansi Sukses Dibuat!*\n\n📄 Klien: {resto}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}\n\n_File PDF Kwitansi di atas siap di-forward ke klien sebagai bukti lunas._"
+        
+        with open(pdf_filename, 'rb') as pdf_file:
+            bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
+        
+        if os.path.exists(pdf_filename):
+            os.remove(pdf_filename)
+            
+    except ValueError:
+        bot.reply_to(message, "⚠️ Nominal harga harus angka tanpa titik atau Rp.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['ratecard'])
 def send_ratecard(message):
@@ -299,7 +469,6 @@ def generate_invoice(message):
         main_parts = parts[1].split('-', 1)
         resto = main_parts[0].strip()
         
-        # PERUBAHAN: Menggunakan titik koma (;) sebagai pemisah item
         items_raw = main_parts[1].split(';')
         
         parsed_items = []
@@ -356,7 +525,6 @@ def generate_invoice_full(message):
         main_parts = parts[1].split('-', 1)
         resto = main_parts[0].strip()
         
-        # PERUBAHAN: Menggunakan titik koma (;) sebagai pemisah item
         items_raw = main_parts[1].split(';')
         
         parsed_items = []
@@ -467,18 +635,15 @@ def add_posting(message):
         date_str = parts[1].replace('-', '/')
         resto_name = parts[2]
 
-        # Validasi format tanggal
         datetime.strptime(date_str, "%d/%m/%Y")
 
         posts = post_ws.get_all_records()
         
-        # Cek apakah sudah ada antrean posting di tanggal tersebut
         for p in posts:
             if str(p.get('TanggalPosting', '')).strip() == date_str:
                 bot.reply_to(message, f"❌ Slot posting tanggal {date_str} sudah penuh (Maksimal 1 konten per hari).\n\n🎥 Konten yang sudah terjadwal: {p.get('Resto', '')}")
                 return
 
-        # Masukkan ke Google Sheet jika tanggal kosong
         post_ws.append_row([date_str, resto_name])
         bot.reply_to(message, f"✅ Berhasil!\n\n🚀 Jadwal posting konten {resto_name} berhasil ditambahkan pada tanggal {date_str}.")
 
