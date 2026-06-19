@@ -185,7 +185,7 @@ def send_welcome(message):
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
-# --- VOICE COMMAND ROUTER (OTAK UTAMA) ---
+# --- VOICE COMMAND ROUTER (OTAK UTAMA YANG SUDAH DIPERBAIKI) ---
 @bot.message_handler(content_types=['voice'])
 def handle_voice_global(message):
     try:
@@ -214,11 +214,24 @@ def handle_voice_global(message):
         teks_lower = teks_hasil.lower()
         bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n🚀 _Memproses perintah..._", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
-        # 1. ROUTER: TAMBAH VISIT
-        if "tambah visit" in teks_lower or "jadwalin visit" in teks_lower:
+        # 1. ROUTER: CEK JADWAL & REKAP (Prioritas Tertinggi)
+        if any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
+            if "visit" in teks_lower or "kunjungan" in teks_lower:
+                message.text = "/jadwalvisit"
+                return list_visit(message)
+            elif "posting" in teks_lower or "konten" in teks_lower:
+                message.text = "/jadwalposting"
+                return list_posting(message)
+            elif "bulan" in teks_lower or "keuangan" in teks_lower or "rekap" in teks_lower:
+                message.text = "/rekapbulan"
+                return rekap_bulan(message)
+
+        # 2. ROUTER: TAMBAH VISIT
+        elif any(kata in teks_lower for kata in ["visit", "kunjungan", "masukin jadwal", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
-            match_resto = re.search(r'(?:di|resto|namanya)\s+(.+)', teks_lower)
-            resto = match_resto.group(1).title() if match_resto else "Resto Baru"
+            # Ambil sisa teks sebagai nama resto (Biasakan sebut nama resto di akhir)
+            match_resto = re.search(r'(?:di\s+resto|di|resto|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
+            resto = match_resto.group(1).strip().title() if match_resto else "Resto Baru"
             
             if not date_str: date_str = datetime.now().strftime("%d/%m/%Y")
             if not time_str: time_str = "12:00"
@@ -226,19 +239,19 @@ def handle_voice_global(message):
             message.text = f"/tambahvisit {date_str} {time_str} {resto}"
             return add_visit(message)
 
-        # 2. ROUTER: TAMBAH POSTING
-        elif "tambah posting" in teks_lower or "jadwalin posting" in teks_lower:
+        # 3. ROUTER: TAMBAH POSTING
+        elif any(kata in teks_lower for kata in ["posting", "konten"]):
             date_str, _ = parse_tanggal_jam(teks_lower)
-            match_resto = re.search(r'(?:konten|resto|untuk)\s+(.+)', teks_lower)
-            resto = match_resto.group(1).title() if match_resto else "Konten Baru"
+            match_resto = re.search(r'(?:konten|resto|untuk|tentang)\s+([a-zA-Z0-9\s]+)', teks_lower)
+            resto = match_resto.group(1).strip().title() if match_resto else "Konten Baru"
             
             if not date_str: date_str = datetime.now().strftime("%d/%m/%Y")
             
             message.text = f"/tambahposting {date_str} {resto}"
             return add_posting(message)
 
-        # 3. ROUTER: KWITANSI
-        elif "bikin kwitansi" in teks_lower or "buat kwitansi" in teks_lower:
+        # 4. ROUTER: KWITANSI
+        elif "kwitansi" in teks_lower:
             match_kwt = re.search(r'(?:kwitansi|resto)\s+(.+?)\s+(?:sebesar|nominal|harga)\s+(.+?)\s+(?:untuk|buat)\s+(.+)', teks_lower)
             if match_kwt:
                 resto = match_kwt.group(1).title()
@@ -252,8 +265,8 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format kwitansi suara salah. Coba:\n_'Bikin kwitansi resto [Nama] nominal [Angka] untuk [Keterangan]'_")
             return
 
-        # 4. ROUTER: SPK
-        elif "bikin spk" in teks_lower or "buat spk" in teks_lower:
+        # 5. ROUTER: SPK
+        elif "spk" in teks_lower:
             match_spk = re.search(r'(?:spk|resto)\s+(.+?)\s+(?:dengan\s+)?(?:paket)\s+(.+)', teks_lower)
             if match_spk:
                 resto = match_spk.group(1).title()
@@ -263,40 +276,28 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format SPK suara salah. Coba:\n_'Bikin SPK resto [Nama] paket [Nama Paket]'_")
             return
 
-        # 5. ROUTER: CEK JADWAL & REKAP
-        elif "lihat jadwal visit" in teks_lower or "cek jadwal visit" in teks_lower:
-            message.text = "/jadwalvisit"
-            return list_visit(message)
-            
-        elif "lihat jadwal posting" in teks_lower or "cek jadwal posting" in teks_lower:
-            message.text = "/jadwalposting"
-            return list_posting(message)
-            
-        elif "rekap bulan" in teks_lower or "rekap keuangan" in teks_lower:
-            message.text = "/rekapbulan"
-            return rekap_bulan(message)
-
         # 6. ROUTER: KEUANGAN (Fallback)
         else:
             nominal = extract_nominal(teks_lower)
             if not nominal:
-                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali sebagai perintah sistem yang sah.")
+                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali. Pastikan menyebut kata kunci seperti 'Visit', 'Posting', 'Kwitansi', atau nominal uang untuk dicatat.")
                 return
                 
             tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
             
-            if any(kata in teks_lower for kata in ["masuk", "pemasukan", "terima", "dp", "pelunasan"]):
+            # Kata pemicu diperketat agar "masukin" tidak memicu ini
+            if any(kata in teks_lower for kata in ["pemasukan", "terima uang", "terima dp", "pelunasan", "bayaran", "cair", "uang masuk"]):
                 jenis = "Pemasukan"
                 keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
                 bot.send_message(message.chat.id, f"✅ *Pemasukan Dicatat via Suara!*\n\n📅 Tanggal: {tgl_sekarang}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {teks_hasil.capitalize()}", parse_mode="Markdown")
             
-            elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan", "jajan"]):
+            elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan", "jajan", "tol", "uang keluar"]):
                 jenis = "Pengeluaran"
                 keuangan_ws.append_row([tgl_sekarang, jenis, nominal, teks_hasil.capitalize()])
                 bot.send_message(message.chat.id, f"📉 *Pengeluaran Dicatat via Suara!*\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}\n📝 Ket: {teks_hasil.capitalize()}", parse_mode="Markdown")
             
             else:
-                bot.send_message(message.chat.id, "⚠️ Bot menemukan angka, tapi bingung ini uang masuk atau keluar. Tolong sebutkan 'Pemasukan' atau 'Pengeluaran'.")
+                bot.send_message(message.chat.id, "⚠️ Bot menemukan angka, tapi bingung ini uang masuk atau keluar. Tolong sebutkan kata 'Terima Uang', 'Pengeluaran', atau 'Bayar'.")
 
     except sr.UnknownValueError:
         bot.reply_to(message, "⚠️ Bot tidak bisa mendengar suara dengan jelas. Coba ulangi pelan-pelan ya.")
