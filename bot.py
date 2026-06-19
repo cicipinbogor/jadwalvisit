@@ -101,8 +101,8 @@ def send_welcome(message):
         "9. /ratecard - Harga paket standar/event\n"
         "10. /ratecardumkm - Harga khusus support UMKM\n"
         "11. /sk - Syarat & Ketentuan\n"
-        "12. /invoice Nama Resto - Item1=Harga, Item2=Harga (Versi DP)\n"
-        "13. /invoicefull Nama Resto - Item1=Harga, Item2=Harga (Versi Lunas)"
+        "12. /invoice Nama Resto - Item1=Harga; Item2=Harga (Versi DP)\n"
+        "13. /invoicefull Nama Resto - Item1=Harga; Item2=Harga (Versi Lunas)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -293,17 +293,21 @@ def generate_invoice(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Item1=Harga1, Item2=Harga2\n\nContoh:\n/invoice Brano Pizzeria - Pkt Gacor=800000, 2x Story=50000")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoice Nama Resto - Item1=Harga1; Item2=Harga2\n\nContoh:\n/invoice Brano Pizzeria - Pkt Gacor=800000; 2x Story=50000")
             return
         
         main_parts = parts[1].split('-', 1)
         resto = main_parts[0].strip()
-        items_raw = main_parts[1].split(',')
+        
+        # PERUBAHAN: Menggunakan titik koma (;) sebagai pemisah item
+        items_raw = main_parts[1].split(';')
         
         parsed_items = []
         total_harga = 0
         
         for item in items_raw:
+            if not item.strip():
+                continue
             if '=' not in item:
                 bot.reply_to(message, f"⚠️ Format salah pada item: '{item.strip()}'. Pastikan pakai tanda '=' untuk memisahkan nama item dan harganya.")
                 return
@@ -346,17 +350,21 @@ def generate_invoice_full(message):
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
-            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoicefull Nama Resto - Item1=Harga1, Item2=Harga2\n\nContoh:\n/invoicefull Brano Pizzeria - Pkt Gacor=800000, 2x Story=50000")
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/invoicefull Nama Resto - Item1=Harga1; Item2=Harga2\n\nContoh:\n/invoicefull Brano Pizzeria - Pkt Gacor=800000; 2x Story=50000")
             return
         
         main_parts = parts[1].split('-', 1)
         resto = main_parts[0].strip()
-        items_raw = main_parts[1].split(',')
+        
+        # PERUBAHAN: Menggunakan titik koma (;) sebagai pemisah item
+        items_raw = main_parts[1].split(';')
         
         parsed_items = []
         total_harga = 0
         
         for item in items_raw:
+            if not item.strip():
+                continue
             if '=' not in item:
                 bot.reply_to(message, f"⚠️ Format salah pada item: '{item.strip()}'. Pastikan pakai tanda '=' untuk memisahkan nama item dan harganya.")
                 return
