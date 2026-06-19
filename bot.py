@@ -113,9 +113,144 @@ def send_welcome(message):
         "14. /kwitansi Nama Resto - Nominal - Keterangan\n"
         "15. /catatmasuk Nominal Keterangan\n"
         "16. /catatkeluar Nominal Keterangan\n"
-        "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan untuk bulan ini)"
+        "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan untuk bulan ini)\n"
+        "18. /spk Nama Resto - Nama Paket"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['spk'])
+def generate_spk(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or '-' not in parts[1]:
+            bot.reply_to(message, "⚠️ Format salah. Gunakan:\n/spk Nama Resto - Nama Paket\n\nContoh:\n/spk Brano Pizzeria - Paket Gacor")
+            return
+
+        subparts = parts[1].split('-', 1)
+        resto = subparts[0].strip()
+        paket = subparts[1].strip()
+
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        pdf_filename = f"SPK_{resto.replace(' ', '_')}.pdf"
+
+        # --- PROSES PEMBUATAN PDF SPK ---
+        pdf = FPDF()
+        pdf.add_page()
+
+        # Header
+        if os.path.exists("logo.png"):
+            pdf.image("logo.png", x=10, y=2, w=32)
+            pdf.set_xy(45, 10)
+        else:
+            pdf.set_xy(10, 10)
+
+        pdf.set_font("helvetica", "B", 24)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 8, "Cicipin Bogor", ln=True)
+
+        if os.path.exists("logo.png"):
+            pdf.set_x(45)
+
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
+
+        if os.path.exists("logo.png"):
+            pdf.set_x(45)
+        pdf.set_font("helvetica", "I", 9)
+        pdf.set_text_color(120, 120, 120)
+        pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
+
+        # Garis
+        pdf.ln(3)
+        pdf.set_draw_color(200, 200, 200)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(10)
+
+        # Judul SPK
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("helvetica", "B", 14)
+        pdf.cell(0, 8, "SURAT PERJANJIAN KERJA SAMA (MoU)", ln=True, align="C")
+        pdf.ln(8)
+
+        # Isi Surat
+        pdf.set_font("helvetica", "", 11)
+        teks_pembuka = f"Pada hari ini, tanggal {tgl_sekarang}, disepakati kesepakatan kerja sama promosi digital (Food Vlogger Review) antara:"
+        pdf.multi_cell(0, 6, teks_pembuka)
+        pdf.ln(4)
+
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(35, 6, "Pihak Pertama", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 6, ": Cicipin Bogor (Kreator Konten)", ln=True)
+
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(35, 6, "Pihak Kedua", 0, 0)
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(0, 6, f": {resto} (Klien / Resto)", ln=True)
+        pdf.ln(4)
+
+        pdf.multi_cell(0, 6, f"Kedua belah pihak sepakat untuk bekerja sama dalam pembuatan konten review kuliner dengan rincian paket: {paket}. Berikut adalah syarat dan ketentuan yang mengikat kedua belah pihak secara sah:")
+        pdf.ln(4)
+
+        # Pasal-Pasal
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(0, 6, "Pasal 1: Proses Liputan & Hak Konten", ln=True)
+        pdf.set_font("helvetica", "", 11)
+        pdf.multi_cell(0, 6, "- Pihak Kedua menyediakan menu andalan yang akan di-review secara gratis untuk kebutuhan liputan visual dan pencicipan.\n- Proses syuting memakan waktu sekitar 1-2 jam di lokasi Pihak Kedua.")
+        pdf.ln(2)
+
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(0, 6, "Pasal 2: Sistem Pembayaran & Reschedule", ln=True)
+        pdf.set_font("helvetica", "", 11)
+        pdf.multi_cell(0, 6, "- Down Payment (DP) 50% wajib dibayarkan maksimal H-3 sebelum jadwal visit untuk mengunci jadwal (Slot).\n- Pelunasan 50% dilakukan maksimal H-1 sebelum video resmi ditayangkan di media sosial.\n- Jika Pihak Kedua membatalkan sepihak setelah DP dibayarkan, maka DP dianggap hangus.\n- Reschedule maksimal diinfokan H-2 sebelum hari liputan.")
+        pdf.ln(2)
+
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(0, 6, "Pasal 3: Hak Cipta & Kebijakan Upload Ulang", ln=True)
+        pdf.set_font("helvetica", "", 11)
+        pdf.multi_cell(0, 6, "- Pihak Kedua berhak mendapat revisi video maksimal 1x (hanya berlaku untuk revisi minor berupa ralat teks harga, alamat, atau penulisan nama).\n- Hak Cipta video sepenuhnya merupakan milik Pihak Pertama (Cicipin Bogor).\n- Pihak Kedua DILARANG KERAS MENGUNGGAH ULANG (re-upload) video utuh ke platform manapun (TikTok, IG, FB) tanpa membeli opsi Hak Milik (Owning Content) terlebih dahulu. Pihak Kedua hanya diperbolehkan melakukan fitur 'Share' atau 'Collab'.")
+        pdf.ln(12)
+
+        # Area Tanda Tangan
+        pdf.set_font("helvetica", "", 11)
+        pdf.cell(95, 6, "Pihak Pertama,", 0, 0, "C")
+        pdf.cell(95, 6, "Pihak Kedua,", 0, 1, "C")
+
+        y_ttd = pdf.get_y()
+
+        # Tempel Tanda Tangan Pihak Pertama (Cicipin Bogor)
+        ttd_file = None
+        for ext in ["ttd.png", "ttd.jpg", "TTD.png"]:
+            if os.path.exists(ext):
+                ttd_file = ext
+                break
+
+        if ttd_file:
+            # Letak di sebelah kiri (x=45 agar pas di tengah kolom Pihak Pertama)
+            pdf.image(ttd_file, x=45, y=y_ttd + 2, w=25)
+
+        pdf.ln(25) # Spasi tinggi TTD
+
+        pdf.set_font("helvetica", "BU", 11)
+        pdf.cell(95, 6, "Cicipin Bogor", 0, 0, "C")
+        pdf.cell(95, 6, f"{resto}", 0, 1, "C")
+
+        # Simpan file
+        pdf.output(pdf_filename)
+
+        bot.reply_to(message, "⏳ Sedang menyusun Surat Perjanjian Kerja Sama (SPK)...")
+
+        caption_text = f"✅ *SPK Sukses Dibuat!*\n\n📄 Klien: {resto}\n📦 Paket: {paket}\n\n_File PDF SPK di atas bisa langsung kamu forward ke pihak resto agar mereka paham aturan main & hak cipta video Cicipin Bogor._"
+
+        with open(pdf_filename, 'rb') as pdf_file:
+            bot.send_document(message.chat.id, pdf_file, caption=caption_text, parse_mode='Markdown')
+
+        if os.path.exists(pdf_filename):
+            os.remove(pdf_filename)
+
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['catatmasuk'])
 def catat_masuk(message):
@@ -296,7 +431,7 @@ def generate_kwitansi(message):
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(45, 8, "Uang Sejumlah", 0, 0)
         pdf.set_font("helvetica", "B", 14)
-        pdf.set_text_color(0, 100, 0) # Warna hijau gelap untuk nominal
+        pdf.set_text_color(0, 100, 0) 
         pdf.cell(0, 8, f": Rp {nominal:,.0f}", ln=True)
         
         pdf.set_text_color(0, 0, 0)
@@ -313,7 +448,6 @@ def generate_kwitansi(message):
         
         y_ttd = pdf.get_y()
         
-        # Pelacak Otomatis Ekstensi Gambar LUNAS
         lunas_file = None
         for ext in ["lunas.jpg", "lunas.jpeg", "lunas.png", "LUNAS.jpg", "LUNAS.png"]:
             if os.path.exists(ext):
@@ -321,10 +455,8 @@ def generate_kwitansi(message):
                 break
                 
         if lunas_file:
-            # Diperbesar dan digeser agar pas di ruang kosong
             pdf.image(lunas_file, x=20, y=y_ttd - 8, w=55)
             
-        # Pelacak Otomatis Ekstensi Gambar TTD
         ttd_file = None
         for ext in ["ttd.png", "ttd.jpg", "TTD.png"]:
             if os.path.exists(ext):
@@ -332,10 +464,9 @@ def generate_kwitansi(message):
                 break
                 
         if ttd_file:
-            # Mengatur letak TTD tepat di tengah tulisan "Cicipin Bogor" (koordinat x disesuaikan)
             pdf.image(ttd_file, x=152.5, y=y_ttd + 2, w=25)
         
-        pdf.ln(30) # Spasi yang pas untuk gambar stempel & tinggi TTD
+        pdf.ln(30)
         
         pdf.set_font("helvetica", "BU", 11)
         pdf.cell(120, 6, "", 0, 0)
