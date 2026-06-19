@@ -154,24 +154,33 @@ def handle_voice_finance(message):
         
         teks_lower = teks_hasil.lower()
         
-        # Logika NLP (Natural Language Processing) Sederhana
-        # Mengubah teks ucapan seperti "ribu", "juta" menjadi format angka
-        teks_angka = teks_lower.replace("ribu", "000").replace("juta", "000000").replace(".", "").replace("rupiah", "")
+        # --- PERBAIKAN NLP PENCATAT ANGKA PINTAR ---
+        # 1. Terjemahkan kata khusus dulu
+        teks_angka = teks_lower.replace("seribu", "1000").replace("sejuta", "1000000")
         
-        # Mencari deretan angka pertama dalam kalimat
-        angka_match = re.search(r'\d+', teks_angka)
+        # 2. Hilangkan spasi sebelum "ribu" agar menempel dengan angka di depannya (cth: "50 ribu" -> "50000")
+        teks_angka = teks_angka.replace(" ribu", "000").replace("ribu", "000")
+        teks_angka = teks_angka.replace(" juta", "000000").replace("juta", "000000")
         
-        if not angka_match:
+        # 3. Bersihkan titik dan kata mata uang
+        teks_angka = teks_angka.replace(".", "").replace("rupiah", "").replace(",", "")
+        
+        # 4. Cari SEMUA angka di dalam kalimat
+        angka_matches = re.findall(r'\d+', teks_angka)
+        
+        if not angka_matches:
             bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n\n⚠️ *Gagal Mencatat:* Bot tidak menemukan nominal angka yang jelas. Coba sebutkan angkanya lebih tegas.", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
             return
             
-        nominal = int(angka_match.group())
+        # 5. Ambil angka TERBESAR dari seluruh kalimat (Pintar menyortir jumlah barang vs harga)
+        nominal = max([int(x) for x in angka_matches])
+        
         tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
         
         # Menebak ini uang masuk atau keluar dari konteks kalimat
         if any(kata in teks_lower for kata in ["masuk", "pemasukan", "terima", "dp", "pelunasan"]):
             jenis = "Pemasukan"
-        elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan"]):
+        elif any(kata in teks_lower for kata in ["keluar", "pengeluaran", "beli", "bayar", "bensin", "parkir", "makan", "jajan"]):
             jenis = "Pengeluaran"
         else:
             bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n\n⚠️ *Gagal Mencatat:* Bot bingung ini uang masuk atau keluar. Tolong sebutkan kata 'Pemasukan' atau 'Pengeluaran'.", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
@@ -580,11 +589,11 @@ def send_ratecard(message):
         "• Harga: Rp 500.000\n\n"
         "🚀 *PAKET GACOR (Grand Opening / Event)*\n"
         "• 1x Visit & Liputan Prioritas\n"
-        "• 1x Video (TikTok & IG Reels)\n"
+        "• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi\n"
         "• ✨ *FREE Collab on Instagram*\n"
         "• Keep video permanent\n"
         "• Prioritas jadwal upload\n"
-        "• Harga: Rp 700.000\n\n"
+        "• Harga: Rp 800.000\n\n"
         "➕ *ADDITIONAL MENU*\n"
         "• *Owning Content (Hak Milik Video):*\n"
         "  - Kualitas 2K: +Rp 200.000\n"
