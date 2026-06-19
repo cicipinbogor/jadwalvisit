@@ -112,7 +112,8 @@ def send_welcome(message):
         "13. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
         "14. /kwitansi Nama Resto - Nominal - Keterangan\n"
         "15. /catatmasuk Nominal Keterangan\n"
-        "16. /catatkeluar Nominal Keterangan"
+        "16. /catatkeluar Nominal Keterangan\n"
+        "17. /rekapbulan MM/YYYY (atau ketik /rekapbulan untuk bulan ini)"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -155,6 +156,68 @@ def catat_keluar(message):
         bot.reply_to(message, "⚠️ Nominal harus berupa angka (contoh: 15000).")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['rekapbulan'])
+def rekap_bulan(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) > 1:
+            target_month_str = parts[1].strip()
+            target_date = datetime.strptime(target_month_str, "%m/%Y")
+        else:
+            target_date = datetime.now()
+            target_month_str = target_date.strftime("%m/%Y")
+            
+        target_month = target_date.month
+        target_year = target_date.year
+        
+        records = keuangan_ws.get_all_records()
+        
+        pemasukan_list = []
+        pengeluaran_list = []
+        total_masuk = 0
+        total_keluar = 0
+        
+        for row in records:
+            tgl = str(row.get('Tanggal', '')).strip()
+            if not tgl: continue
+            
+            try:
+                dt = datetime.strptime(tgl, "%d/%m/%Y")
+                if dt.month == target_month and dt.year == target_year:
+                    jenis = str(row.get('Jenis', '')).lower()
+                    nominal = int(row.get('Nominal', 0))
+                    ket = str(row.get('Keterangan', ''))
+                    
+                    if jenis == 'pemasukan':
+                        pemasukan_list.append(f"• {tgl}: Rp {nominal:,.0f} ({ket})")
+                        total_masuk += nominal
+                    elif jenis == 'pengeluaran':
+                        pengeluaran_list.append(f"• {tgl}: Rp {nominal:,.0f} ({ket})")
+                        total_keluar += nominal
+            except ValueError:
+                continue
+                
+        profit = total_masuk - total_keluar
+        
+        reply = f"📊 *REKAP KEUANGAN BULAN {target_month_str}*\n\n"
+        reply += f"🟢 *Total Pemasukan:* Rp {total_masuk:,.0f}\n"
+        reply += f"🔴 *Total Pengeluaran:* Rp {total_keluar:,.0f}\n"
+        reply += f"⭐ *Profit Bersih:* Rp {profit:,.0f}\n\n"
+        
+        if pemasukan_list or pengeluaran_list:
+            reply += "📝 *RINCIAN TRANSAKSI:*\n"
+            reply += "*PEMASUKAN:*\n" + ("\n".join(pemasukan_list) if pemasukan_list else "- Tidak ada") + "\n\n"
+            reply += "*PENGELUARAN:*\n" + ("\n".join(pengeluaran_list) if pengeluaran_list else "- Tidak ada")
+        else:
+            reply += "_Belum ada catatan keuangan untuk bulan ini._"
+            
+        bot.reply_to(message, reply, parse_mode='Markdown')
+        
+    except ValueError:
+        bot.reply_to(message, "⚠️ Format bulan salah. Gunakan MM/YYYY (contoh: /rekapbulan 06/2026)")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['kwitansi'])
 def generate_kwitansi(message):
