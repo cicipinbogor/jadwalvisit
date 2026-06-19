@@ -5,3 +5,5 @@ APScheduler==3.10.4
 pytz
 fpdf2
 google-api-python-client
+SpeechRecognition==3.10.0
+pydub==0.25.1
