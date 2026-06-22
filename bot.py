@@ -276,8 +276,32 @@ def send_welcome(message):
         "16. /catatmasuk Nominal Keterangan\n"
         "17. /catatkeluar Nominal Keterangan\n"
         "18. /rekapbulan MM/YYYY (atau ketik /rekapbulan)\n"
-        "19. /spk Nama Resto - Nama Paket\n\n"
+        "19. /spk Nama Resto - Nama Paket\n"
+        "20. /helpvoice - Tutorial lengkap Voice Command\n\n"
         "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, centang visit, bikin invoice, SPK, hingga mencatat pengeluaran tanpa ngetik!"
+    )
+    bot.reply_to(message, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['helpvoice'])
+def send_help_voice(message):
+    teks = (
+        "🎙️ *PANDUAN PERINTAH SUARA (VOICE COMMAND)*\n\n"
+        "Agar bot mengerti 100%, ikuti pola kalimat di bawah ini:\n\n"
+        "📅 *1. PENJADWALAN*\n"
+        "• *Tambah Visit:* _\"Bot, tambah visit besok jam 2 siang di resto Brano Pizzeria\"_\n"
+        "• *Centang Visit:* _\"Bot, tolong centang visit resto Brano Pizzeria\"_\n"
+        "• *Tambah Posting:* _\"Bot, tambah posting lusa untuk konten Bakso Mercon\"_\n"
+        "• *Cek Jadwal:* _\"Bot, lihat jadwal visit hari ini\"_\n\n"
+        "📑 *2. ADMINISTRASI*\n"
+        "• *Buat SPK:* _\"Bot, bikin SPK resto Kopi Daun paket Support UMKM\"_\n"
+        "• *Buat Invoice DP:* _\"Bot, bikin invoice resto Ayam Bakar Pak Ndut paket Reguler harga 500 ribu\"_\n"
+        "• *Buat Invoice Lunas:* _\"Bot, buat invoice resto Brano Pizzeria paket Gacor nominal 800 ribu lunas\"_\n"
+        "• *Buat Kwitansi:* _\"Bot, bikin kwitansi resto Sate Maranggi nominal 400 ribu untuk pelunasan\"_\n\n"
+        "💰 *3. KEUANGAN*\n"
+        "• *Pemasukan (Terima uang, Cair, DP, Pelunasan):* _\"Bot, catat ada pemasukan pelunasan dari cafe senja sebesar 300 ribu\"_\n"
+        "• *Pengeluaran (Beli, Bayar, Bensin, Parkir, Jajan):* _\"Bot, catat pengeluaran beli bensin 50 ribu\"_\n"
+        "• *Rekap Bulanan:* _\"Bot, tolong rekap keuangan bulan ini\"_\n\n"
+        "💡 *Tips:* Jangan gabungkan 2 perintah dalam 1 Voice Note. Sebutkan angka dengan natural (misal: 'lima ratus ribu')."
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -310,7 +334,13 @@ def handle_voice_global(message):
         teks_lower = teks_hasil.lower()
         bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n🚀 _Memproses perintah..._", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
-        if any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
+        # 0. ROUTER: BANTUAN SUARA (Paling atas)
+        if any(kata in teks_lower for kata in ["help voice", "bantuan suara", "tutorial perintah suara", "cara perintah suara"]):
+            message.text = "/helpvoice"
+            return send_help_voice(message)
+
+        # 1. ROUTER: CEK JADWAL & REKAP
+        elif any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
             if "visit" in teks_lower or "kunjungan" in teks_lower:
                 message.text = "/jadwalvisit"
                 return list_visit(message)
@@ -321,6 +351,7 @@ def handle_voice_global(message):
                 message.text = "/rekapbulan"
                 return rekap_bulan(message)
 
+        # 2. ROUTER: CENTANG VISIT
         elif any(kata in teks_lower for kata in ["centang", "selesai", "tandai"]) and ("visit" in teks_lower or "kunjungan" in teks_lower):
             match_resto = re.search(r'(?:resto|di|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
             resto = match_resto.group(1).strip() if match_resto else ""
@@ -331,6 +362,7 @@ def handle_voice_global(message):
             message.text = f"/centangvisit {resto}"
             return mark_done_visit(message)
 
+        # 3. ROUTER: TAMBAH VISIT
         elif any(kata in teks_lower for kata in ["visit", "kunjungan", "masukin jadwal", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:di\s+resto|di|resto|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -342,6 +374,7 @@ def handle_voice_global(message):
             message.text = f"/tambahvisit {date_str} {time_str} {resto}"
             return add_visit(message)
 
+        # 4. ROUTER: TAMBAH POSTING
         elif any(kata in teks_lower for kata in ["posting", "konten"]):
             date_str, _ = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:konten|resto|untuk|tentang)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -352,6 +385,7 @@ def handle_voice_global(message):
             message.text = f"/tambahposting {date_str} {resto}"
             return add_posting(message)
 
+        # 5. ROUTER: INVOICE 
         elif "invoice" in teks_lower:
             is_full = "full" in teks_lower or "lunas" in teks_lower
             nominal_inv = extract_nominal(teks_lower)
@@ -380,6 +414,7 @@ def handle_voice_global(message):
                 bot.send_message(message.chat.id, "⚠️ Format invoice suara kurang jelas. Pastikan sebutkan nama resto dan nominal harganya.")
                 return
 
+        # 6. ROUTER: KWITANSI
         elif "kwitansi" in teks_lower:
             match_kwt = re.search(r'(?:kwitansi|resto)\s+(.+?)\s+(?:sebesar|nominal|harga)\s+(.+?)\s+(?:untuk|buat)\s+(.+)', teks_lower)
             if match_kwt:
@@ -394,6 +429,7 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format kwitansi suara salah. Coba:\n_'Bikin kwitansi resto [Nama] nominal [Angka] untuk [Keterangan]'_")
             return
 
+        # 7. ROUTER: SPK
         elif "spk" in teks_lower:
             match_spk = re.search(r'(?:spk|resto)\s+(.+?)\s+(?:dengan\s+)?(?:paket)\s+(.+)', teks_lower)
             if match_spk:
@@ -404,10 +440,11 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format SPK suara salah. Coba:\n_'Bikin SPK resto [Nama] paket [Nama Paket]'_")
             return
 
+        # 8. ROUTER: KEUANGAN (Fallback)
         else:
             nominal = extract_nominal(teks_lower)
             if not nominal:
-                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali. Pastikan menyebut kata kunci seperti 'Visit', 'Posting', 'Kwitansi', 'Invoice', atau nominal uang untuk dicatat.")
+                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali. Pastikan menyebut kata kunci seperti 'Visit', 'Posting', 'Kwitansi', 'Invoice', atau nominal uang untuk dicatat.\n\nKetik /helpvoice untuk melihat panduan.")
                 return
                 
             tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
