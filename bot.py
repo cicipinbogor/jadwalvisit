@@ -1,4 +1,5 @@
 import telebot
+from telebot import types
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
@@ -252,9 +253,9 @@ scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
 scheduler.start()
 
-# --- MAIN MENU DENGAN TOMBOL INLINE KEKINIAN ---
-@bot.message_handler(commands=['start', 'menu'])
-def send_welcome(message):
+
+# --- FUNGSI BANTUAN KEYBOARD ---
+def get_main_menu_markup():
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
     btn1 = telebot.types.InlineKeyboardButton('📅 Jadwal Visit', callback_data='menu_visit')
     btn2 = telebot.types.InlineKeyboardButton('🚀 Jadwal Posting', callback_data='menu_posting')
@@ -262,32 +263,53 @@ def send_welcome(message):
     btn4 = telebot.types.InlineKeyboardButton('📑 Administrasi', callback_data='menu_admin')
     btn5 = telebot.types.InlineKeyboardButton('🎙️ Bantuan Suara', callback_data='menu_helpvoice')
     btn6 = telebot.types.InlineKeyboardButton('⚙️ Rate Card & S&K', callback_data='menu_settings')
-    
     markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
-    
+    return markup
+
+def get_back_markup():
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton('🔙 Kembali ke Menu', callback_data='menu_main'))
+    return markup
+
+
+# --- MAIN MENU DENGAN TOMBOL INLINE KEKINIAN ---
+@bot.message_handler(commands=['start', 'menu'])
+def send_welcome(message):
     teks = (
         "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\n"
         "Halo bos! Mau ngurusin apa kita hari ini?\n\n"
         "Silakan tap menu di bawah pesan ini, atau kalau lagi repot di jalan, langsung aja kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, bikin SPK, dll) 🎙️🔥"
     )
-    bot.reply_to(message, teks, reply_markup=markup, parse_mode='Markdown')
+    bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
 
 # --- HANDLER KLIK TOMBOL INLINE ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_'))
 def handle_inline_menu(call):
-    bot.answer_callback_query(call.id) # Acknowledge klik agar loading hilang
+    bot.answer_callback_query(call.id)
     
-    if call.data == 'menu_visit':
+    if call.data == 'menu_main':
+        teks = (
+            "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\n"
+            "Halo bos! Mau ngurusin apa kita hari ini?\n\n"
+            "Silakan tap menu di bawah pesan ini, atau kalau lagi repot di jalan, langsung aja kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, bikin SPK, dll) 🎙️🔥"
+        )
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
+
+    elif call.data == 'menu_visit':
         call.message.text = "/jadwalvisit"
         list_visit(call.message)
+        
     elif call.data == 'menu_posting':
         call.message.text = "/jadwalposting"
         list_posting(call.message)
+        
     elif call.data == 'menu_rekap':
         call.message.text = "/rekapbulan"
         rekap_bulan(call.message)
+        
     elif call.data == 'menu_helpvoice':
         send_help_voice(call.message)
+        
     elif call.data == 'menu_admin':
         teks = (
             "💼 *MENU ADMINISTRASI KLIEN*\n\n"
@@ -297,7 +319,8 @@ def handle_inline_menu(call):
             "📄 *Invoice Lunas (Full):*\n`/invoicefull Nama Resto - Item=Harga`\n\n"
             "🧾 *Kwitansi Lunas:*\n`/kwitansi Nama Resto - Nominal - Keterangan`"
         )
-        bot.send_message(call.message.chat.id, teks, parse_mode='Markdown')
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=teks, reply_markup=get_back_markup(), parse_mode='Markdown')
+        
     elif call.data == 'menu_settings':
         teks = (
             "⚙️ *PENGATURAN RATE CARD & S&K*\n\n"
@@ -306,7 +329,7 @@ def handle_inline_menu(call):
             "2. /ratecardumkm (Untuk ubah: /editrcumkm)\n"
             "3. /sk (Untuk ubah: /editsk)"
         )
-        bot.send_message(call.message.chat.id, teks, parse_mode='Markdown')
+        bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=teks, reply_markup=get_back_markup(), parse_mode='Markdown')
 
 @bot.message_handler(commands=['help', 'helpvoice'])
 def send_help_voice(message):
