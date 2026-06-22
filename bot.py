@@ -38,6 +38,104 @@ except gspread.exceptions.WorksheetNotFound:
     keuangan_ws = sheet.add_worksheet(title="Keuangan", rows="1000", cols="4")
     keuangan_ws.append_row(["Tanggal", "Jenis", "Nominal", "Keterangan"])
 
+# --- TEKS DEFAULT UNTUK PENGATURAN ---
+DEFAULT_RATECARD = """📄 *RATE CARD & KERJA SAMA*
+
+Halo! Terima kasih atas ketertarikannya bekerja sama. Berikut adalah penawaran paket liputan kuliner/review:
+
+📦 *PAKET REGULER (Review Standar)*
+• 1x Visit & Liputan Resto
+• 1x Video tayang di TikTok & IG Reels
+• ✨ *FREE Collab on Instagram*
+• Keep video permanent
+• Harga: Rp 500.000
+
+🚀 *PAKET GACOR (Grand Opening / Event)*
+• 1x Visit & Liputan Prioritas
+• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi
+• ✨ *FREE Collab on Instagram*
+• Keep video permanent
+• Prioritas jadwal upload
+• Harga: Rp 800.000
+
+➕ *ADDITIONAL MENU*
+• *Owning Content (Hak Milik Video):*
+  - Kualitas 2K: +Rp 200.000
+  - Kualitas 4K: +Rp 300.000
+• *Additional Story (Instagram):*
+  - 1x Story: +Rp 30.000
+  - 2x Story: +Rp 50.000
+
+📌 *Catatan:*
+• Harga berlaku untuk wilayah Bogor & sekitarnya.
+• Untuk Syarat & Ketentuan lengkap silakan ketik /sk
+
+Silakan balas pesan ini jika ada paket yang sesuai atau ingin berdiskusi lebih lanjut! 🙏"""
+
+DEFAULT_RATECARDUMKM = """🤝 *RATE CARD KHUSUS UMKM*
+
+Halo! Sebagai bentuk *support* untuk usaha rintisan dan UMKM kuliner lokal, Cicipin Bogor menyediakan paket penawaran khusus yang lebih terjangkau:
+
+🌱 *PAKET SUPPORT UMKM*
+• 1x Visit & Liputan Outlet
+• 1x Video tayang di IG Reels (termasuk mirroring ke TikTok)
+• Keep video permanent
+• Harga Khusus: *Rp 400.000*
+
+📌 *Catatan:*
+• Harga khusus ini berlaku untuk bisnis skala kecil/menengah di wilayah Bogor & sekitarnya.
+• Jadwal upload akan disesuaikan dengan antrean slot reguler.
+• Untuk Syarat & Ketentuan lengkap silakan ketik /sk
+
+Mari maju bersama memajukan kuliner lokal! Silakan balas pesan ini untuk menentukan jadwal visit. 🙏"""
+
+DEFAULT_SK = """📝 *SYARAT & KETENTUAN (S&K) KERJA SAMA*
+
+Untuk menjaga kenyamanan dan profesionalisme proses produksi konten, berikut adalah S&K yang berlaku:
+
+1️⃣ *Proses Liputan & Konsumsi*
+• Pihak resto menyediakan menu andalan yang akan di-review secara gratis.
+• Proses syuting memakan waktu sekitar 1-2 jam.
+
+2️⃣ *Sistem Pembayaran (Payment)*
+• Down Payment (DP) sebesar 50% wajib dibayarkan maksimal H-3 sebelum jadwal visit untuk mengunci slot.
+• Pelunasan sisa 50% dilakukan maksimal H-1 sebelum video resmi ditayangkan (upload).
+
+3️⃣ *Reschedule & Pembatalan*
+• Perubahan jadwal visit wajib diinfokan paling lambat H-2 sebelum hari liputan.
+• Jika pihak klien membatalkan kerja sama sepihak, maka DP dianggap hangus.
+
+4️⃣ *Kebijakan Revisi Video*
+• Klien berhak mendapatkan revisi video maksimal 1x (revisi minor seperti salah info harga, teks, atau penulisan nama).
+
+5️⃣ *Hak Cipta & Penggunaan Video*
+• Hak cipta video sepenuhnya milik creator. Konten akan ditayangkan secara permanen di akun creator.
+• Klien dilarang mengunggah ulang (re-upload) video utuh tanpa membeli opsi *Owning Content*."""
+
+# Cek dan buat otomatis sheet 'Pengaturan' jika belum ada
+try:
+    settings_ws = sheet.worksheet('Pengaturan')
+except gspread.exceptions.WorksheetNotFound:
+    settings_ws = sheet.add_worksheet(title="Pengaturan", rows="10", cols="2")
+    settings_ws.append_row(["Key", "Value"])
+    settings_ws.append_row(["ratecard", DEFAULT_RATECARD])
+    settings_ws.append_row(["ratecardumkm", DEFAULT_RATECARDUMKM])
+    settings_ws.append_row(["sk", DEFAULT_SK])
+
+# Fungsi Helper Update Pengaturan
+def update_pengaturan(key, new_value):
+    records = settings_ws.get_all_records()
+    row_to_edit = None
+    for idx, r in enumerate(records, start=2):
+        if str(r.get('Key', '')).strip().lower() == key:
+            row_to_edit = idx
+            break
+    
+    if row_to_edit:
+        settings_ws.update_cell(row_to_edit, 2, new_value)
+    else:
+        settings_ws.append_row([key, new_value])
+
 def safe_date_parse(date_str):
     try:
         return datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
@@ -168,9 +266,9 @@ def send_welcome(message):
         "7. /batalposting DD/MM/YYYY\n"
         "8. /jadwalvisit - Lihat jadwal visit\n"
         "9. /jadwalposting - Lihat antrean konten\n"
-        "10. /ratecard - Harga paket standar/event\n"
-        "11. /ratecardumkm - Harga khusus support UMKM\n"
-        "12. /sk - Syarat & Ketentuan\n"
+        "10. /ratecard (juga /editrc)\n"
+        "11. /ratecardumkm (juga /editrcumkm)\n"
+        "12. /sk (juga /editsk)\n"
         "13. /invoice Nama - Item1=Harga; Item2=Harga (DP)\n"
         "14. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
         "15. /kwitansi Nama Resto - Nominal - Keterangan\n"
@@ -178,7 +276,7 @@ def send_welcome(message):
         "17. /catatkeluar Nominal Keterangan\n"
         "18. /rekapbulan MM/YYYY (atau ketik /rekapbulan)\n"
         "19. /spk Nama Resto - Nama Paket\n\n"
-        "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, centang visit, bikin kwitansi, SPK, hingga mencatat pengeluaran tanpa ngetik!"
+        "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, centang visit, bikin invoice, SPK, hingga mencatat pengeluaran tanpa ngetik!"
     )
     bot.reply_to(message, teks, parse_mode='Markdown')
 
@@ -211,7 +309,6 @@ def handle_voice_global(message):
         teks_lower = teks_hasil.lower()
         bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n🚀 _Memproses perintah..._", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
-        # 1. ROUTER: CEK JADWAL & REKAP (Prioritas Tertinggi)
         if any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
             if "visit" in teks_lower or "kunjungan" in teks_lower:
                 message.text = "/jadwalvisit"
@@ -223,19 +320,16 @@ def handle_voice_global(message):
                 message.text = "/rekapbulan"
                 return rekap_bulan(message)
 
-        # 2. ROUTER: CENTANG VISIT (Prioritas sebelum Tambah Visit)
         elif any(kata in teks_lower for kata in ["centang", "selesai", "tandai"]) and ("visit" in teks_lower or "kunjungan" in teks_lower):
             match_resto = re.search(r'(?:resto|di|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
             resto = match_resto.group(1).strip() if match_resto else ""
             
-            # Jika regex gagal, ambil sisanya saja
             if not resto:
                 resto = teks_lower.replace("bot", "").replace("centang", "").replace("selesai", "").replace("tandai", "").replace("visit", "").replace("kunjungan", "").replace("resto", "").replace("sudah", "").replace("di", "").strip()
                 
             message.text = f"/centangvisit {resto}"
             return mark_done_visit(message)
 
-        # 3. ROUTER: TAMBAH VISIT
         elif any(kata in teks_lower for kata in ["visit", "kunjungan", "masukin jadwal", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:di\s+resto|di|resto|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -247,18 +341,44 @@ def handle_voice_global(message):
             message.text = f"/tambahvisit {date_str} {time_str} {resto}"
             return add_visit(message)
 
-        # 4. ROUTER: TAMBAH POSTING
         elif any(kata in teks_lower for kata in ["posting", "konten"]):
             date_str, _ = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:konten|resto|untuk|tentang)\s+([a-zA-Z0-9\s]+)', teks_lower)
-            resto = match_resto.group(1).strip().title() if match_resto else "Konten Baru"
+            resto = match_resto.group(1).strip().title() if match_resto else "Conten Baru"
             
             if not date_str: date_str = datetime.now().strftime("%d/%m/%Y")
             
             message.text = f"/tambahposting {date_str} {resto}"
             return add_posting(message)
 
-        # 5. ROUTER: KWITANSI
+        elif "invoice" in teks_lower:
+            is_full = "full" in teks_lower or "lunas" in teks_lower
+            nominal_inv = extract_nominal(teks_lower)
+            
+            if nominal_inv:
+                resto = "Klien"
+                item_name = "Paket Konten"
+                
+                match_all = re.search(r'resto\s+(.+?)\s+(?:paket|item)\s+(.+?)\s+(?:harga|nominal|sebesar|lunas|full|\d)', teks_lower)
+                
+                if match_all:
+                    resto = match_all.group(1).strip().title()
+                    item_name = match_all.group(2).strip().title()
+                else:
+                    match_resto = re.search(r'resto\s+(.+?)\s+(?:harga|nominal|sebesar|lunas|full|\d)', teks_lower)
+                    if match_resto:
+                        resto = match_resto.group(1).strip().title()
+                
+                if is_full:
+                    message.text = f"/invoicefull {resto} - {item_name}={nominal_inv}"
+                    return generate_invoice_full(message)
+                else:
+                    message.text = f"/invoice {resto} - {item_name}={nominal_inv}"
+                    return generate_invoice(message)
+            else:
+                bot.send_message(message.chat.id, "⚠️ Format invoice suara kurang jelas. Pastikan sebutkan nama resto dan nominal harganya.")
+                return
+
         elif "kwitansi" in teks_lower:
             match_kwt = re.search(r'(?:kwitansi|resto)\s+(.+?)\s+(?:sebesar|nominal|harga)\s+(.+?)\s+(?:untuk|buat)\s+(.+)', teks_lower)
             if match_kwt:
@@ -273,7 +393,6 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format kwitansi suara salah. Coba:\n_'Bikin kwitansi resto [Nama] nominal [Angka] untuk [Keterangan]'_")
             return
 
-        # 6. ROUTER: SPK
         elif "spk" in teks_lower:
             match_spk = re.search(r'(?:spk|resto)\s+(.+?)\s+(?:dengan\s+)?(?:paket)\s+(.+)', teks_lower)
             if match_spk:
@@ -284,11 +403,10 @@ def handle_voice_global(message):
             bot.send_message(message.chat.id, "⚠️ Format SPK suara salah. Coba:\n_'Bikin SPK resto [Nama] paket [Nama Paket]'_")
             return
 
-        # 7. ROUTER: KEUANGAN (Fallback)
         else:
             nominal = extract_nominal(teks_lower)
             if not nominal:
-                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali. Pastikan menyebut kata kunci seperti 'Visit', 'Posting', 'Kwitansi', atau nominal uang untuk dicatat.")
+                bot.send_message(message.chat.id, "⚠️ Maaf, instruksi suara tidak dikenali. Pastikan menyebut kata kunci seperti 'Visit', 'Posting', 'Kwitansi', 'Invoice', atau nominal uang untuk dicatat.")
                 return
                 
             tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
@@ -313,7 +431,78 @@ def handle_voice_global(message):
     except Exception as e:
         bot.reply_to(message, f"⚠️ Terjadi kesalahan sistem: {str(e)}")
 
-# --- FUNGSI STANDAR (COMMAND TEXT) ---
+# --- FUNGSI STANDAR (COMMAND TEXT & EDIT TEMPLATE) ---
+
+@bot.message_handler(commands=['editratecard', 'editrc'])
+def edit_ratecard(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        # Jika tidak memasukkan teks baru, sajikan teks lama di dalam blok monospaced agar mudah dicopy
+        if len(parts) < 2:
+            records = settings_ws.get_all_records()
+            current_text = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecard'), DEFAULT_RATECARD)
+            reply_text = (
+                "📋 *Template Rate Card saat ini:*\n"
+                "_Ketuk teks di bawah untuk menyalin otomatis._\n\n"
+                f"`{current_text}`\n\n"
+                "💡 *Cara Edit:* Salin teks di atas, edit harga/paketnya, lalu kirim kembali dengan format:\n"
+                "`/editrc [Teks Baru yang sudah kamu edit]`"
+            )
+            bot.reply_to(message, reply_text, parse_mode='Markdown')
+            return
+            
+        new_text = parts[1].strip()
+        update_pengaturan('ratecard', new_text)
+        bot.reply_to(message, "✅ Teks Rate Card berhasil diperbarui!")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['editratecardumkm', 'editrcumkm'])
+def edit_ratecard_umkm(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            records = settings_ws.get_all_records()
+            current_text = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecardumkm'), DEFAULT_RATECARDUMKM)
+            reply_text = (
+                "📋 *Template Rate Card UMKM saat ini:*\n"
+                "_Ketuk teks di bawah untuk menyalin otomatis._\n\n"
+                f"`{current_text}`\n\n"
+                "💡 *Cara Edit:* Salin teks di atas, edit ketentuannya, lalu kirim kembali dengan format:\n"
+                "`/editrcumkm [Teks Baru]`"
+            )
+            bot.reply_to(message, reply_text, parse_mode='Markdown')
+            return
+            
+        new_text = parts[1].strip()
+        update_pengaturan('ratecardumkm', new_text)
+        bot.reply_to(message, "✅ Teks Rate Card UMKM berhasil diperbarui!")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['editsk'])
+def edit_sk(message):
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            records = settings_ws.get_all_records()
+            current_text = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'sk'), DEFAULT_SK)
+            reply_text = (
+                "📋 *Template Syarat & Ketentuan saat ini:*\n"
+                "_Ketuk teks di bawah untuk menyalin otomatis._\n\n"
+                f"`{current_text}`\n\n"
+                "💡 *Cara Edit:* Salin teks di atas, sesuaikan aturannya, lalu kirim kembali dengan format:\n"
+                "`/editsk [Teks Baru]`"
+            )
+            bot.reply_to(message, reply_text, parse_mode='Markdown')
+            return
+            
+        new_text = parts[1].strip()
+        update_pengaturan('sk', new_text)
+        bot.reply_to(message, "✅ Teks Syarat & Ketentuan berhasil diperbarui!")
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan: {str(e)}")
+
 @bot.message_handler(commands=['centangvisit'])
 def mark_done_visit(message):
     try:
@@ -329,7 +518,6 @@ def mark_done_visit(message):
         
         for idx, v in enumerate(visits, start=2):
             resto_sheet = str(v.get('Resto', '')).strip()
-            # Cek kecocokan nama resto dan pastikan belum ada logo centang
             if (target_resto in resto_sheet.lower() or resto_sheet.lower() in target_resto) and "✅" not in resto_sheet:
                 row_to_edit = idx
                 resto_asli = resto_sheet
@@ -359,7 +547,6 @@ def generate_spk(message):
         tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
         pdf_filename = f"SPK_{resto.replace(' ', '_')}.pdf"
 
-        # --- PROSES PEMBUATAN PDF SPK ---
         pdf = FPDF()
         pdf.add_page()
 
@@ -581,7 +768,7 @@ def generate_kwitansi(message):
             
         subparts = parts[1].split('-')
         if len(subparts) < 3:
-            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama, Nominal, dan Keterangan dipisah tanda strip (-).")
+            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama, Nominal, and Keterangan dipisah tanda strip (-).")
             return
             
         resto = subparts[0].strip()
@@ -703,78 +890,6 @@ def generate_kwitansi(message):
         bot.reply_to(message, "⚠️ Nominal harga harus angka tanpa titik atau Rp.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
-
-@bot.message_handler(commands=['ratecard'])
-def send_ratecard(message):
-    teks = (
-        "📄 *RATE CARD & KERJA SAMA*\n\n"
-        "Halo! Terima kasih atas ketertarikannya bekerja sama. Berikut adalah penawaran paket liputan kuliner/review:\n\n"
-        "📦 *PAKET REGULER (Review Standar)*\n"
-        "• 1x Visit & Liputan Resto\n"
-        "• 1x Video tayang di TikTok & IG Reels\n"
-        "• ✨ *FREE Collab on Instagram*\n"
-        "• Keep video permanent\n"
-        "• Harga: Rp 500.000\n\n"
-        "🚀 *PAKET GACOR (Grand Opening / Event)*\n"
-        "• 1x Visit & Liputan Prioritas\n"
-        "• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi\n"
-        "• ✨ *FREE Collab on Instagram*\n"
-        "• Keep video permanent\n"
-        "• Prioritas jadwal upload\n"
-        "• Harga: Rp 800.000\n\n"
-        "➕ *ADDITIONAL MENU*\n"
-        "• *Owning Content (Hak Milik Video):*\n"
-        "  - Kualitas 2K: +Rp 200.000\n"
-        "  - Kualitas 4K: +Rp 300.000\n"
-        "• *Additional Story (Instagram):*\n"
-        "  - 1x Story: +Rp 30.000\n"
-        "  - 2x Story: +Rp 50.000\n\n"
-        "📌 *Catatan:*\n"
-        "• Harga berlaku untuk wilayah Bogor & sekitarnya.\n"
-        "• Untuk Syarat & Ketentuan lengkap silakan ketik /sk\n\n"
-        "Silakan balas pesan ini jika ada paket yang sesuai atau ingin berdiskusi lebih lanjut! 🙏"
-    )
-    bot.reply_to(message, teks, parse_mode='Markdown')
-
-@bot.message_handler(commands=['ratecardumkm'])
-def send_ratecard_umkm(message):
-    teks = (
-        "🤝 *RATE CARD KHUSUS UMKM*\n\n"
-        "Halo! Sebagai bentuk *support* untuk usaha rintisan dan UMKM kuliner lokal, Cicipin Bogor menyediakan paket penawaran khusus yang lebih terjangkau:\n\n"
-        "🌱 *PAKET SUPPORT UMKM*\n"
-        "• 1x Visit & Liputan Outlet\n"
-        "• 1x Video tayang di IG Reels (termasuk mirroring ke TikTok)\n"
-        "• Keep video permanent\n"
-        "• Harga Khusus: *Rp 400.000*\n\n"
-        "📌 *Catatan:*\n"
-        "• Harga khusus ini berlaku untuk bisnis skala kecil/menengah di wilayah Bogor & sekitarnya.\n"
-        "• Jadwal upload akan disesuaikan dengan antrean slot reguler.\n"
-        "• Untuk Syarat & Ketentuan lengkap silakan ketik /sk\n\n"
-        "Mari maju bersama memajukan kuliner lokal! Silakan balas pesan ini untuk menentukan jadwal visit. 🙏"
-    )
-    bot.reply_to(message, teks, parse_mode='Markdown')
-
-@bot.message_handler(commands=['sk'])
-def send_sk(message):
-    teks = (
-        "📝 *SYARAT & KETENTUAN (S&K) KERJA SAMA*\n\n"
-        "Untuk menjaga kenyamanan dan profesionalisme proses produksi konten, berikut adalah S&K yang berlaku:\n\n"
-        "1️⃣ *Proses Liputan & Konsumsi*\n"
-        "• Pihak resto menyediakan menu andalan yang akan di-review secara gratis.\n"
-        "• Proses syuting memakan waktu sekitar 1-2 jam.\n\n"
-        "2️⃣ *Sistem Pembayaran (Payment)*\n"
-        "• Down Payment (DP) sebesar 50% wajib dibayarkan maksimal H-3 sebelum jadwal visit untuk mengunci slot.\n"
-        "• Pelunasan sisa 50% dilakukan maksimal H-1 sebelum video resmi ditayangkan (upload).\n\n"
-        "3️⃣ *Reschedule & Pembatalan*\n"
-        "• Perubahan jadwal visit wajib diinfokan paling lambat H-2 sebelum hari liputan.\n"
-        "• Jika pihak klien membatalkan kerja sama sepihak, maka DP dianggap hangus.\n\n"
-        "4️⃣ *Kebijakan Revisi Video*\n"
-        "• Klien berhak mendapatkan revisi video maksimal 1x (revisi minor seperti salah info harga, teks, atau penulisan nama).\n\n"
-        "5️⃣ *Hak Cipta & Penggunaan Video*\n"
-        "• Hak cipta video sepenuhnya milik creator. Konten akan ditayangkan secara permanen di akun creator.\n"
-        "• Klien dilarang mengunggah ulang (re-upload) video utuh tanpa membeli opsi *Owning Content*."
-    )
-    bot.reply_to(message, teks, parse_mode='Markdown')
 
 def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
     pdf = FPDF()
@@ -1185,7 +1300,7 @@ def cancel_visit(message):
         bot.reply_to(message, f"🗑 Jadwal visit ke {resto_name} pada {date_str} jam {time_str} berhasil dibatalkan.")
 
     except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
+        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY and HH:MM.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
