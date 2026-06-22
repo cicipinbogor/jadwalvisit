@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import os
 import json
 import re
+import math
 from fpdf import FPDF
 from apscheduler.schedulers.background import BackgroundScheduler
 from pydub import AudioSegment
@@ -254,7 +255,7 @@ scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
 scheduler.start()
 
 
-# --- FUNGSI BANTUAN KEYBOARD ---
+# --- FUNGSI BANTUAN KEYBOARD & PAGINATION ---
 def get_main_menu_markup():
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
     btn1 = telebot.types.InlineKeyboardButton('📅 Jadwal Visit', callback_data='menu_visit')
@@ -271,6 +272,26 @@ def get_back_markup():
     markup.add(telebot.types.InlineKeyboardButton('🔙 Kembali ke Menu', callback_data='menu_main'))
     return markup
 
+def get_pagination_markup(current_page, total_items, prefix):
+    markup = telebot.types.InlineKeyboardMarkup(row_width=3)
+    buttons = []
+    total_pages = math.ceil(total_items / 10)
+    
+    if current_page > 0:
+        buttons.append(telebot.types.InlineKeyboardButton('⬅️ Prev', callback_data=f'{prefix}_{current_page - 1}'))
+    
+    # Indikator halaman di tengah (tombol mati/ignore)
+    buttons.append(telebot.types.InlineKeyboardButton(f'{current_page + 1} / {total_pages}', callback_data='ignore'))
+    
+    if current_page < total_pages - 1:
+        buttons.append(telebot.types.InlineKeyboardButton('Next ➡️', callback_data=f'{prefix}_{current_page + 1}'))
+        
+    if buttons:
+        markup.row(*buttons)
+        
+    markup.add(telebot.types.InlineKeyboardButton('🔙 Kembali ke Menu', callback_data='menu_main'))
+    return markup
+
 
 # --- MAIN MENU DENGAN TOMBOL INLINE KEKINIAN ---
 @bot.message_handler(commands=['start', 'menu'])
@@ -283,10 +304,13 @@ def send_welcome(message):
     bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
 
 # --- HANDLER KLIK TOMBOL INLINE ---
-@bot.callback_query_handler(func=lambda call: call.data.startswith('menu_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
 def handle_inline_menu(call):
     bot.answer_callback_query(call.id)
     
+    if call.data == 'ignore':
+        return
+
     if call.data == 'menu_main':
         teks = (
             "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\n"
@@ -297,11 +321,19 @@ def handle_inline_menu(call):
 
     elif call.data == 'menu_visit':
         call.message.text = "/jadwalvisit"
-        list_visit(call.message, is_edit=True)
+        list_visit(call.message, is_edit=True, page=0)
+        
+    elif call.data.startswith('visit_page_'):
+        page = int(call.data.split('_')[-1])
+        list_visit(call.message, is_edit=True, page=page)
         
     elif call.data == 'menu_posting':
         call.message.text = "/jadwalposting"
-        list_posting(call.message, is_edit=True)
+        list_posting(call.message, is_edit=True, page=0)
+        
+    elif call.data.startswith('post_page_'):
+        page = int(call.data.split('_')[-1])
+        list_posting(call.message, is_edit=True, page=page)
         
     elif call.data == 'menu_rekap':
         call.message.text = "/rekapbulan"
@@ -1468,72 +1500,101 @@ def cancel_posting(message):
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['jadwalvisit'])
-def list_visit(message, is_edit=False):
+def list_visit(message, is_edit=False, page=0):
     try:
         visits = visit_ws.get_all_records()
-        if not visits:
+        
+        valid_visits = []
+        for v in visits:
+            tgl_str = str(v.get('Tanggal', '')).strip()
+            resto = str(v.get('Resto', '')).strip()
+            if tgl_str and resto.lower() != 'dummy':
+                valid_visits.append(v)
+                
+        valid_visits = sorted(valid_visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', ''))))
+        
+        total_items = len(valid_visits)
+        if total_items == 0:
             reply = "Belum ada jadwal visit yang terdaftar."
+            markup = get_back_markup()
         else:
-            reply = "📌 *List Jadwal Visit:*\n\n"
+            items_per_page = 10
+            start_idx = page * items_per_page
+            end_idx = start_idx + items_per_page
+            paginated_visits = valid_visits[start_idx:end_idx]
+            
+            reply = f"📌 *List Jadwal Visit (Halaman {page+1}):*\n\n"
             current_date = ""
             
-            for v in sorted(visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', '')))):
+            for v in paginated_visits:
                 tgl_str = str(v.get('Tanggal', '')).strip()
                 resto = str(v.get('Resto', '')).strip()
                 jam = str(v.get('Jam', '')).strip()
                 
-                if tgl_str and resto.lower() != 'dummy':
-                    dt = safe_date_parse(tgl_str)
-                    if dt != datetime.min:
-                        nama_hari = HARI_INDO[dt.weekday()]
-                        nama_bulan = BULAN_INDO[dt.month - 1]
-                        header_tanggal = f"{nama_hari} {dt.day} {nama_bulan}"
+                dt = safe_date_parse(tgl_str)
+                if dt != datetime.min:
+                    nama_hari = HARI_INDO[dt.weekday()]
+                    nama_bulan = BULAN_INDO[dt.month - 1]
+                    header_tanggal = f"{nama_hari} {dt.day} {nama_bulan}"
+                    
+                    if header_tanggal != current_date:
+                        if current_date != "":
+                            reply += "\n" 
+                        reply += f"*{header_tanggal}*\n"
+                        current_date = header_tanggal
                         
-                        if header_tanggal != current_date:
-                            if current_date != "":
-                                reply += "\n" 
-                            reply += f"*{header_tanggal}*\n"
-                            current_date = header_tanggal
-                            
-                        reply += f"• {resto} {jam}\n"
+                    reply += f"• {resto} {jam}\n"
+                    
+            markup = get_pagination_markup(page, total_items, 'visit_page')
             
-            if reply == "📌 *List Jadwal Visit:*\n\n":
-                reply = "Belum ada jadwal visit yang terdaftar."
-                
         if is_edit:
-            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
+            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup)
         else:
-            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
             
     except Exception as e:
         bot.send_message(message.chat.id, f"Terjadi kesalahan: {str(e)}")
 
 @bot.message_handler(commands=['jadwalposting'])
-def list_posting(message, is_edit=False):
+def list_posting(message, is_edit=False, page=0):
     try:
         posts = post_ws.get_all_records()
-        if not posts:
+        valid_posts = []
+        for p in posts:
+            tgl_str = str(p.get('TanggalPosting', '')).strip()
+            resto = str(p.get('Resto', '')).strip()
+            if tgl_str and resto.lower() != 'dummy':
+                valid_posts.append(p)
+                
+        valid_posts = sorted(valid_posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', '')))
+        
+        total_items = len(valid_posts)
+        if total_items == 0:
             reply = "Belum ada antrean jadwal posting."
+            markup = get_back_markup()
         else:
-            reply = "🚀 *List Antrean Posting (1 Hari 1 Konten):*\n\n"
-            for p in sorted(posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', ''))):
+            items_per_page = 10
+            start_idx = page * items_per_page
+            end_idx = start_idx + items_per_page
+            paginated_posts = valid_posts[start_idx:end_idx]
+            
+            reply = f"🚀 *List Antrean Posting (Halaman {page+1}):*\n\n"
+            for p in paginated_posts:
                 tgl_str = str(p.get('TanggalPosting', '')).strip()
                 resto = str(p.get('Resto', '')).strip()
                 
-                if tgl_str and resto.lower() != 'dummy':
-                    dt = safe_date_parse(tgl_str)
-                    nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
-                    reply += f"• {nama_hari}, {tgl_str} - Konten: {resto}\n"
-            
-            if reply == "🚀 *List Antrean Posting (1 Hari 1 Konten):*\n\n":
-                reply = "Belum ada antrean jadwal posting."
+                dt = safe_date_parse(tgl_str)
+                nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
+                reply += f"• {nama_hari}, {tgl_str} - Konten: {resto}\n"
                 
+            markup = get_pagination_markup(page, total_items, 'post_page')
+        
         if is_edit:
-            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
+            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup)
         else:
-            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
             
     except Exception as e:
-        bot.send_message(message.chat.id, f"Terjadi kesalahan: {str(e)}")
+        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
 
 bot.infinity_polling()
