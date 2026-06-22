@@ -266,9 +266,10 @@ def send_welcome(message):
         "7. /batalposting DD/MM/YYYY\n"
         "8. /jadwalvisit - Lihat jadwal visit\n"
         "9. /jadwalposting - Lihat antrean konten\n"
-        "10. /ratecard (juga /editrc)\n"
-        "11. /ratecardumkm (juga /editrcumkm)\n"
-        "12. /sk (juga /editsk)\n"
+        "10. /ratecard (atau /rc)\n"
+        "11. /ratecardumkm (atau /rcumkm)\n"
+        "12. /sk\n"
+        "    *(Untuk edit ketik: /editrc, /editrcumkm, /editsk)*\n"
         "13. /invoice Nama - Item1=Harga; Item2=Harga (DP)\n"
         "14. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
         "15. /kwitansi Nama Resto - Nominal - Keterangan\n"
@@ -344,7 +345,7 @@ def handle_voice_global(message):
         elif any(kata in teks_lower for kata in ["posting", "konten"]):
             date_str, _ = parse_tanggal_jam(teks_lower)
             match_resto = re.search(r'(?:konten|resto|untuk|tentang)\s+([a-zA-Z0-9\s]+)', teks_lower)
-            resto = match_resto.group(1).strip().title() if match_resto else "Conten Baru"
+            resto = match_resto.group(1).strip().title() if match_resto else "Konten Baru"
             
             if not date_str: date_str = datetime.now().strftime("%d/%m/%Y")
             
@@ -437,7 +438,6 @@ def handle_voice_global(message):
 def edit_ratecard(message):
     try:
         parts = message.text.split(maxsplit=1)
-        # Jika tidak memasukkan teks baru, sajikan teks lama di dalam blok monospaced agar mudah dicopy
         if len(parts) < 2:
             records = settings_ws.get_all_records()
             current_text = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecard'), DEFAULT_RATECARD)
@@ -768,7 +768,7 @@ def generate_kwitansi(message):
             
         subparts = parts[1].split('-')
         if len(subparts) < 3:
-            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama, Nominal, and Keterangan dipisah tanda strip (-).")
+            bot.reply_to(message, "⚠️ Detail kurang lengkap. Pastikan memasukkan Nama, Nominal, dan Keterangan dipisah tanda strip (-).")
             return
             
         resto = subparts[0].strip()
@@ -890,6 +890,33 @@ def generate_kwitansi(message):
         bot.reply_to(message, "⚠️ Nominal harga harus angka tanpa titik atau Rp.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['ratecard', 'rc'])
+def send_ratecard(message):
+    try:
+        records = settings_ws.get_all_records()
+        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecard'), DEFAULT_RATECARD)
+        bot.reply_to(message, teks, parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+
+@bot.message_handler(commands=['ratecardumkm', 'rcumkm'])
+def send_ratecard_umkm(message):
+    try:
+        records = settings_ws.get_all_records()
+        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecardumkm'), DEFAULT_RATECARDUMKM)
+        bot.reply_to(message, teks, parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+
+@bot.message_handler(commands=['sk'])
+def send_sk(message):
+    try:
+        records = settings_ws.get_all_records()
+        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'sk'), DEFAULT_SK)
+        bot.reply_to(message, teks, parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
 
 def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
     pdf = FPDF()
@@ -1300,7 +1327,7 @@ def cancel_visit(message):
         bot.reply_to(message, f"🗑 Jadwal visit ke {resto_name} pada {date_str} jam {time_str} berhasil dibatalkan.")
 
     except ValueError:
-        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY and HH:MM.")
+        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
