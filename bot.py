@@ -7,6 +7,8 @@ import os
 import json
 import re
 import math
+import random
+import string
 from fpdf import FPDF
 from apscheduler.schedulers.background import BackgroundScheduler
 from pydub import AudioSegment
@@ -39,6 +41,79 @@ try:
 except gspread.exceptions.WorksheetNotFound:
     keuangan_ws = sheet.add_worksheet(title="Keuangan", rows="1000", cols="4")
     keuangan_ws.append_row(["Tanggal", "Jenis", "Nominal", "Keterangan"])
+
+# --- SISTEM LISENSI BOT (SaaS) ---
+LICENSE_CACHE = {
+    'exp_date': datetime.min,
+    'status': 'LOCKED',
+    'key': '',
+    'last_checked': None
+}
+
+def generate_key():
+    return "CCPN-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def sync_lisensi_from_sheet():
+    try:
+        ws = sheet.worksheet('Lisensi')
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sheet.add_worksheet(title="Lisensi", rows="10", cols="2")
+        ws.append_row(["Key", "Value"])
+        now = datetime.now()
+        trial_exp = now + timedelta(days=1)
+        new_key = generate_key()
+        ws.append_row(["Status", "TRIAL"])
+        ws.append_row(["ExpiredDate", trial_exp.strftime("%d/%m/%Y %H:%M:%S")])
+        ws.append_row(["AccessKey", new_key])
+        
+        LICENSE_CACHE['status'] = "TRIAL"
+        LICENSE_CACHE['exp_date'] = trial_exp
+        LICENSE_CACHE['key'] = new_key
+        LICENSE_CACHE['last_checked'] = datetime.now()
+        return
+        
+    records = ws.get_all_records()
+    data = {str(r.get('Key', '')).strip(): str(r.get('Value', '')).strip() for r in records}
+    
+    LICENSE_CACHE['status'] = data.get('Status', 'LOCKED')
+    LICENSE_CACHE['key'] = data.get('AccessKey', '')
+    try:
+        LICENSE_CACHE['exp_date'] = datetime.strptime(data.get('ExpiredDate', ''), "%d/%m/%Y %H:%M:%S")
+    except:
+        LICENSE_CACHE['exp_date'] = datetime.min
+        
+    LICENSE_CACHE['last_checked'] = datetime.now()
+
+# Tarikan awal database Lisensi saat bot baru nyala
+sync_lisensi_from_sheet()
+
+def check_lisensi_gate(message_or_call):
+    is_call = hasattr(message_or_call, 'data')
+    msg = message_or_call.message if is_call else message_or_call
+    
+    if not is_call and msg.text and msg.text.startswith('/lisensi'):
+        return True
+        
+    if LICENSE_CACHE['last_checked'] is None or (datetime.now() - LICENSE_CACHE['last_checked']).total_seconds() > 300:
+        sync_lisensi_from_sheet()
+        
+    if datetime.now() > LICENSE_CACHE['exp_date']:
+        warning_text = (
+            "⚠️ *BOT TERKUNCI (MASA AKTIF HABIS)* ⚠️\n\n"
+            "Masa penggunaan bot (Trial/Bulanan) kamu telah habis.\n"
+            "Silakan cek *Google Sheets* tab *'Lisensi'* untuk melihat Kode Akses terbaru yang sudah di-generate otomatis oleh sistem.\n\n"
+            "🔑 Ketik perintah ini untuk mengaktifkan bot 30 hari ke depan:\n"
+            "`/lisensi [Kode_Akses]`\n"
+            "_Contoh: /lisensi CCPN-X1Y2Z3_"
+        )
+        if is_call:
+            bot.answer_callback_query(message_or_call.id, "⚠️ Bot Terkunci! Cek pesan baru.", show_alert=True)
+            bot.send_message(msg.chat.id, warning_text, parse_mode="Markdown")
+        else:
+            bot.reply_to(msg, warning_text, parse_mode="Markdown")
+        return False
+    return True
+
 
 # --- TEKS DEFAULT UNTUK PENGATURAN ---
 DEFAULT_RATECARD = """📄 *RATE CARD & KERJA SAMA*
@@ -114,7 +189,6 @@ Untuk menjaga kenyamanan dan profesionalisme proses produksi konten, berikut ada
 • Hak cipta video sepenuhnya milik creator. Konten akan ditayangkan secara permanen di akun creator.
 • Klien dilarang mengunggah ulang (re-upload) video utuh tanpa membeli opsi *Owning Content*."""
 
-# Cek dan buat otomatis sheet 'Pengaturan' jika belum ada
 try:
     settings_ws = sheet.worksheet('Pengaturan')
 except gspread.exceptions.WorksheetNotFound:
@@ -124,7 +198,6 @@ except gspread.exceptions.WorksheetNotFound:
     settings_ws.append_row(["ratecardumkm", DEFAULT_RATECARDUMKM])
     settings_ws.append_row(["sk", DEFAULT_SK])
 
-# Fungsi Helper Update Pengaturan
 def update_pengaturan(key, new_value):
     records = settings_ws.get_all_records()
     row_to_edit = None
@@ -144,11 +217,9 @@ def safe_date_parse(date_str):
     except:
         return datetime.min
 
-# Daftar hari & Bulan Indonesia
 HARI_INDO = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 BULAN_INDO = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
-# --- FUNGSI NLP PENGURAI TANGGAL & JAM ---
 def parse_tanggal_jam(teks):
     teks_lower = teks.lower()
     now = datetime.now()
@@ -197,7 +268,6 @@ def parse_tanggal_jam(teks):
 
     return date_str, time_str
 
-# --- FUNGSI NLP PENGURAI ANGKA PINTAR ---
 def extract_nominal(teks):
     teks_angka = teks.lower().replace("seribu", "1000").replace("sejuta", "1000000")
     teks_angka = teks_angka.replace(" ribu", "000").replace("ribu", "000")
@@ -280,7 +350,6 @@ def get_pagination_markup(current_page, total_items, prefix):
     if current_page > 0:
         buttons.append(telebot.types.InlineKeyboardButton('⬅️ Prev', callback_data=f'{prefix}_{current_page - 1}'))
     
-    # Indikator halaman di tengah (tombol mati/ignore)
     buttons.append(telebot.types.InlineKeyboardButton(f'{current_page + 1} / {total_pages}', callback_data='ignore'))
     
     if current_page < total_pages - 1:
@@ -293,15 +362,59 @@ def get_pagination_markup(current_page, total_items, prefix):
     return markup
 
 
-# --- MAIN MENU DENGAN TOMBOL INLINE KEKINIAN ---
+# --- MAIN MENU ---
 @bot.message_handler(commands=['start', 'menu'])
 def send_welcome(message):
+    if not check_lisensi_gate(message): return
+    
     teks = (
         "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\n"
         "Halo bos! Mau ngurusin apa kita hari ini?\n\n"
         "Silakan tap menu di bawah pesan ini, atau kalau lagi repot di jalan, langsung aja kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, bikin SPK, dll) 🎙️🔥"
     )
     bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
+
+
+# --- SISTEM AKTIVASI LISENSI ---
+@bot.message_handler(commands=['lisensi'])
+def proses_lisensi(message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        bot.reply_to(message, "⚠️ Format salah. Ketik: `/lisensi [Kode_Akses]`", parse_mode="Markdown")
+        return
+        
+    input_key = parts[1].strip()
+    sync_lisensi_from_sheet()
+    
+    if input_key == LICENSE_CACHE.get('key', '') and input_key != "":
+        new_exp = datetime.now() + timedelta(days=30)
+        new_key = generate_key()
+        
+        ws = sheet.worksheet('Lisensi')
+        try:
+            c1 = ws.find("Status")
+            ws.update_cell(c1.row, 2, "ACTIVE")
+            c2 = ws.find("ExpiredDate")
+            ws.update_cell(c2.row, 2, new_exp.strftime("%d/%m/%Y %H:%M:%S"))
+            c3 = ws.find("AccessKey")
+            ws.update_cell(c3.row, 2, new_key)
+        except gspread.exceptions.CellNotFound:
+            ws.clear()
+            ws.append_row(["Key", "Value"])
+            ws.append_row(["Status", "ACTIVE"])
+            ws.append_row(["ExpiredDate", new_exp.strftime("%d/%m/%Y %H:%M:%S")])
+            ws.append_row(["AccessKey", new_key])
+        
+        LICENSE_CACHE['status'] = "ACTIVE"
+        LICENSE_CACHE['exp_date'] = new_exp
+        LICENSE_CACHE['key'] = new_key
+        LICENSE_CACHE['last_checked'] = datetime.now()
+        
+        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot telah terbuka dan aktif selama 30 hari ke depan. _(Kunci akses untuk bulan depan sudah digenerate dan dikirim ke Google Sheets)_.", parse_mode="Markdown")
+        # Munculkan menu
+        send_welcome(message)
+    else:
+        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!* Silakan minta/cek kunci terbaru di tab 'Lisensi' Google Sheets.", parse_mode="Markdown")
 
 # --- HANDLER KLIK TOMBOL INLINE ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
@@ -310,6 +423,8 @@ def handle_inline_menu(call):
     
     if call.data == 'ignore':
         return
+
+    if not check_lisensi_gate(call): return
 
     if call.data == 'menu_main':
         teks = (
@@ -365,6 +480,7 @@ def handle_inline_menu(call):
 
 @bot.message_handler(commands=['help', 'helpvoice'])
 def send_help_voice(message, is_edit=False):
+    if not check_lisensi_gate(message): return
     teks = (
         "🎙️ *PANDUAN PERINTAH SUARA (VOICE COMMAND)*\n\n"
         "Agar bot mengerti 100%, ikuti pola kalimat di bawah ini:\n\n"
@@ -396,6 +512,7 @@ def send_help_voice(message, is_edit=False):
 # --- VOICE COMMAND ROUTER (OTAK UTAMA) ---
 @bot.message_handler(content_types=['voice'])
 def handle_voice_global(message):
+    if not check_lisensi_gate(message): return
     try:
         msg = bot.reply_to(message, "⏳ _Sedang mencerna pesan suara kamu..._", parse_mode="Markdown")
         
@@ -594,6 +711,7 @@ def handle_voice_global(message):
 
 @bot.message_handler(commands=['editratecard', 'editrc'])
 def edit_ratecard(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
@@ -617,6 +735,7 @@ def edit_ratecard(message):
 
 @bot.message_handler(commands=['editratecardumkm', 'editrcumkm'])
 def edit_ratecard_umkm(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
@@ -640,6 +759,7 @@ def edit_ratecard_umkm(message):
 
 @bot.message_handler(commands=['editsk'])
 def edit_sk(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
@@ -663,6 +783,7 @@ def edit_sk(message):
 
 @bot.message_handler(commands=['centangvisit'])
 def mark_done_visit(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
@@ -692,6 +813,7 @@ def mark_done_visit(message):
 
 @bot.message_handler(commands=['spk'])
 def generate_spk(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
@@ -816,6 +938,7 @@ def generate_spk(message):
 
 @bot.message_handler(commands=['catatmasuk'])
 def catat_masuk(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
@@ -836,6 +959,7 @@ def catat_masuk(message):
 
 @bot.message_handler(commands=['catatkeluar'])
 def catat_keluar(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
@@ -856,6 +980,7 @@ def catat_keluar(message):
 
 @bot.message_handler(commands=['rekapbulan'])
 def rekap_bulan(message, is_edit=False):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1) if message.text and message.text.startswith('/rekapbulan') else ['/rekapbulan']
         if len(parts) > 1:
@@ -921,6 +1046,7 @@ def rekap_bulan(message, is_edit=False):
 
 @bot.message_handler(commands=['kwitansi'])
 def generate_kwitansi(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
@@ -1153,6 +1279,7 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
 
 @bot.message_handler(commands=['invoice'])
 def generate_invoice(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
@@ -1209,6 +1336,7 @@ def generate_invoice(message):
 
 @bot.message_handler(commands=['invoicefull'])
 def generate_invoice_full(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2 or '-' not in parts[1]:
@@ -1264,6 +1392,7 @@ def generate_invoice_full(message):
 
 @bot.message_handler(commands=['tambahvisit'])
 def add_visit(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=3)
         if len(parts) < 4:
@@ -1319,6 +1448,7 @@ def add_visit(message):
 
 @bot.message_handler(commands=['tambahposting'])
 def add_posting(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
@@ -1347,6 +1477,7 @@ def add_posting(message):
 
 @bot.message_handler(commands=['editvisit'])
 def edit_visit(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=5)
         if len(parts) < 6:
@@ -1398,6 +1529,7 @@ def edit_visit(message):
 
 @bot.message_handler(commands=['editposting'])
 def edit_posting(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
@@ -1431,6 +1563,7 @@ def edit_posting(message):
 
 @bot.message_handler(commands=['batalvisit'])
 def cancel_visit(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
         if len(parts) < 3:
@@ -1467,6 +1600,7 @@ def cancel_visit(message):
 
 @bot.message_handler(commands=['batalposting'])
 def cancel_posting(message):
+    if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
         if len(parts) < 2:
@@ -1501,6 +1635,7 @@ def cancel_posting(message):
 
 @bot.message_handler(commands=['jadwalvisit'])
 def list_visit(message, is_edit=False, page=0):
+    if not check_lisensi_gate(message): return
     try:
         visits = visit_ws.get_all_records()
         
@@ -1557,6 +1692,7 @@ def list_visit(message, is_edit=False, page=0):
 
 @bot.message_handler(commands=['jadwalposting'])
 def list_posting(message, is_edit=False, page=0):
+    if not check_lisensi_gate(message): return
     try:
         posts = post_ws.get_all_records()
         valid_posts = []
@@ -1596,5 +1732,35 @@ def list_posting(message, is_edit=False, page=0):
             
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['ratecard', 'rc'])
+def send_ratecard(message):
+    if not check_lisensi_gate(message): return
+    try:
+        records = settings_ws.get_all_records()
+        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecard'), DEFAULT_RATECARD)
+        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
+    except Exception as e:
+        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+
+@bot.message_handler(commands=['ratecardumkm', 'rcumkm'])
+def send_ratecard_umkm(message):
+    if not check_lisensi_gate(message): return
+    try:
+        records = settings_ws.get_all_records()
+        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecardumkm'), DEFAULT_RATECARDUMKM)
+        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
+    except Exception as e:
+        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+
+@bot.message_handler(commands=['sk'])
+def send_sk(message):
+    if not check_lisensi_gate(message): return
+    try:
+        records = settings_ws.get_all_records()
+        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'sk'), DEFAULT_SK)
+        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
+    except Exception as e:
+        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
 
 bot.infinity_polling()
