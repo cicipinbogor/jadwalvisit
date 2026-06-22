@@ -297,18 +297,18 @@ def handle_inline_menu(call):
 
     elif call.data == 'menu_visit':
         call.message.text = "/jadwalvisit"
-        list_visit(call.message)
+        list_visit(call.message, is_edit=True)
         
     elif call.data == 'menu_posting':
         call.message.text = "/jadwalposting"
-        list_posting(call.message)
+        list_posting(call.message, is_edit=True)
         
     elif call.data == 'menu_rekap':
         call.message.text = "/rekapbulan"
-        rekap_bulan(call.message)
+        rekap_bulan(call.message, is_edit=True)
         
     elif call.data == 'menu_helpvoice':
-        send_help_voice(call.message)
+        send_help_voice(call.message, is_edit=True)
         
     elif call.data == 'menu_admin':
         teks = (
@@ -332,7 +332,7 @@ def handle_inline_menu(call):
         bot.edit_message_text(chat_id=call.message.chat.id, message_id=call.message.message_id, text=teks, reply_markup=get_back_markup(), parse_mode='Markdown')
 
 @bot.message_handler(commands=['help', 'helpvoice'])
-def send_help_voice(message):
+def send_help_voice(message, is_edit=False):
     teks = (
         "🎙️ *PANDUAN PERINTAH SUARA (VOICE COMMAND)*\n\n"
         "Agar bot mengerti 100%, ikuti pola kalimat di bawah ini:\n\n"
@@ -356,7 +356,10 @@ def send_help_voice(message):
         "💡 *Tips:* Jangan gabungkan 2 perintah dalam 1 Voice Note. Sebutkan angka dengan natural (misal: 'lima ratus ribu').\n"
         "*(Note: Untuk mengedit jadwal, gunakan perintah teks karena rawan kesalahan via suara).* "
     )
-    bot.reply_to(message, teks, parse_mode='Markdown')
+    if is_edit:
+        bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=teks, parse_mode='Markdown', reply_markup=get_back_markup())
+    else:
+        bot.reply_to(message, teks, parse_mode='Markdown', reply_markup=get_back_markup())
 
 # --- VOICE COMMAND ROUTER (OTAK UTAMA) ---
 @bot.message_handler(content_types=['voice'])
@@ -820,7 +823,7 @@ def catat_keluar(message):
         bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
 
 @bot.message_handler(commands=['rekapbulan'])
-def rekap_bulan(message):
+def rekap_bulan(message, is_edit=False):
     try:
         parts = message.text.split(maxsplit=1) if message.text and message.text.startswith('/rekapbulan') else ['/rekapbulan']
         if len(parts) > 1:
@@ -874,7 +877,10 @@ def rekap_bulan(message):
         else:
             reply += "_Belum ada catatan keuangan untuk bulan ini._"
             
-        bot.send_message(message.chat.id, reply, parse_mode='Markdown')
+        if is_edit:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
+        else:
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
         
     except ValueError:
         bot.send_message(message.chat.id, "⚠️ Format bulan salah. Gunakan MM/YYYY (contoh: /rekapbulan 06/2026)")
@@ -1013,33 +1019,6 @@ def generate_kwitansi(message):
         bot.reply_to(message, "⚠️ Nominal harga harus angka tanpa titik atau Rp.")
     except Exception as e:
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
-
-@bot.message_handler(commands=['ratecard', 'rc'])
-def send_ratecard(message):
-    try:
-        records = settings_ws.get_all_records()
-        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecard'), DEFAULT_RATECARD)
-        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
-    except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
-
-@bot.message_handler(commands=['ratecardumkm', 'rcumkm'])
-def send_ratecard_umkm(message):
-    try:
-        records = settings_ws.get_all_records()
-        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecardumkm'), DEFAULT_RATECARDUMKM)
-        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
-    except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
-
-@bot.message_handler(commands=['sk'])
-def send_sk(message):
-    try:
-        records = settings_ws.get_all_records()
-        teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'sk'), DEFAULT_SK)
-        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
-    except Exception as e:
-        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
 
 def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
     pdf = FPDF()
@@ -1489,68 +1468,72 @@ def cancel_posting(message):
         bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['jadwalvisit'])
-def list_visit(message):
+def list_visit(message, is_edit=False):
     try:
         visits = visit_ws.get_all_records()
         if not visits:
-            bot.send_message(message.chat.id, "Belum ada jadwal visit yang terdaftar.")
-            return
-            
-        reply = "📌 *List Jadwal Visit:*\n\n"
-        current_date = ""
-        
-        for v in sorted(visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', '')))):
-            tgl_str = str(v.get('Tanggal', '')).strip()
-            resto = str(v.get('Resto', '')).strip()
-            jam = str(v.get('Jam', '')).strip()
-            
-            if tgl_str and resto.lower() != 'dummy':
-                dt = safe_date_parse(tgl_str)
-                if dt != datetime.min:
-                    nama_hari = HARI_INDO[dt.weekday()]
-                    nama_bulan = BULAN_INDO[dt.month - 1]
-                    header_tanggal = f"{nama_hari} {dt.day} {nama_bulan}"
-                    
-                    if header_tanggal != current_date:
-                        if current_date != "":
-                            reply += "\n" 
-                        reply += f"*{header_tanggal}*\n"
-                        current_date = header_tanggal
-                        
-                    reply += f"• {resto} {jam}\n"
-        
-        if reply == "📌 *List Jadwal Visit:*\n\n":
-            bot.send_message(message.chat.id, "Belum ada jadwal visit yang terdaftar.")
+            reply = "Belum ada jadwal visit yang terdaftar."
         else:
-            bot.send_message(message.chat.id, reply, parse_mode='Markdown')
+            reply = "📌 *List Jadwal Visit:*\n\n"
+            current_date = ""
+            
+            for v in sorted(visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', '')))):
+                tgl_str = str(v.get('Tanggal', '')).strip()
+                resto = str(v.get('Resto', '')).strip()
+                jam = str(v.get('Jam', '')).strip()
+                
+                if tgl_str and resto.lower() != 'dummy':
+                    dt = safe_date_parse(tgl_str)
+                    if dt != datetime.min:
+                        nama_hari = HARI_INDO[dt.weekday()]
+                        nama_bulan = BULAN_INDO[dt.month - 1]
+                        header_tanggal = f"{nama_hari} {dt.day} {nama_bulan}"
+                        
+                        if header_tanggal != current_date:
+                            if current_date != "":
+                                reply += "\n" 
+                            reply += f"*{header_tanggal}*\n"
+                            current_date = header_tanggal
+                            
+                        reply += f"• {resto} {jam}\n"
+            
+            if reply == "📌 *List Jadwal Visit:*\n\n":
+                reply = "Belum ada jadwal visit yang terdaftar."
+                
+        if is_edit:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
+        else:
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
             
     except Exception as e:
         bot.send_message(message.chat.id, f"Terjadi kesalahan: {str(e)}")
 
 @bot.message_handler(commands=['jadwalposting'])
-def list_posting(message):
+def list_posting(message, is_edit=False):
     try:
         posts = post_ws.get_all_records()
         if not posts:
-            bot.reply_to(message, "Belum ada antrean jadwal posting.")
-            return
-        
-        reply = "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n"
-        for p in sorted(posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', ''))):
-            tgl_str = str(p.get('TanggalPosting', '')).strip()
-            resto = str(p.get('Resto', '')).strip()
-            
-            if tgl_str and resto.lower() != 'dummy':
-                dt = safe_date_parse(tgl_str)
-                nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
-                reply += f"• {nama_hari}, {tgl_str} - Konten: {resto}\n"
-        
-        if reply == "🚀 List Antrean Posting (1 Hari 1 Konten):\n\n":
-            bot.send_message(message.chat.id, "Belum ada antrean jadwal posting.")
+            reply = "Belum ada antrean jadwal posting."
         else:
-            bot.send_message(message.chat.id, reply)
+            reply = "🚀 *List Antrean Posting (1 Hari 1 Konten):*\n\n"
+            for p in sorted(posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', ''))):
+                tgl_str = str(p.get('TanggalPosting', '')).strip()
+                resto = str(p.get('Resto', '')).strip()
+                
+                if tgl_str and resto.lower() != 'dummy':
+                    dt = safe_date_parse(tgl_str)
+                    nama_hari = HARI_INDO[dt.weekday()] if dt != datetime.min else ""
+                    reply += f"• {nama_hari}, {tgl_str} - Konten: {resto}\n"
+            
+            if reply == "🚀 *List Antrean Posting (1 Hari 1 Konten):*\n\n":
+                reply = "Belum ada antrean jadwal posting."
+                
+        if is_edit:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
+        else:
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
             
     except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+        bot.send_message(message.chat.id, f"Terjadi kesalahan: {str(e)}")
 
 bot.infinity_polling()
