@@ -252,37 +252,63 @@ scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
 scheduler.start()
 
-@bot.message_handler(commands=['start', 'help'])
+# --- MAIN MENU DENGAN TOMBOL INLINE KEKINIAN ---
+@bot.message_handler(commands=['start', 'menu'])
 def send_welcome(message):
+    markup = telebot.types.InlineKeyboardMarkup(row_width=2)
+    btn1 = telebot.types.InlineKeyboardButton('📅 Jadwal Visit', callback_data='menu_visit')
+    btn2 = telebot.types.InlineKeyboardButton('🚀 Jadwal Posting', callback_data='menu_posting')
+    btn3 = telebot.types.InlineKeyboardButton('💰 Rekap Keuangan', callback_data='menu_rekap')
+    btn4 = telebot.types.InlineKeyboardButton('📑 Administrasi', callback_data='menu_admin')
+    btn5 = telebot.types.InlineKeyboardButton('🎙️ Bantuan Suara', callback_data='menu_helpvoice')
+    btn6 = telebot.types.InlineKeyboardButton('⚙️ Rate Card & S&K', callback_data='menu_settings')
+    
+    markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
+    
     teks = (
-        "🤖 Bot Jadwal Vlogger Aktif!\n\n"
-        "Cara pakai:\n"
-        "1. /tambahvisit DD/MM/YYYY HH:MM Nama Resto\n"
-        "2. /editvisit TglLama JamLama TglBaru JamBaru NamaResto\n"
-        "3. /centangvisit Nama Resto (Tandai selesai)\n"
-        "4. /tambahposting DD/MM/YYYY Nama Konten\n"
-        "5. /editposting TglPosting NamaRestoBaru\n"
-        "6. /batalvisit DD/MM/YYYY HH:MM\n"
-        "7. /batalposting DD/MM/YYYY\n"
-        "8. /jadwalvisit - Lihat jadwal visit\n"
-        "9. /jadwalposting - Lihat antrean konten\n"
-        "10. /ratecard (atau /rc)\n"
-        "11. /ratecardumkm (atau /rcumkm)\n"
-        "12. /sk\n"
-        "    *(Untuk edit ketik: /editrc, /editrcumkm, /editsk)*\n"
-        "13. /invoice Nama - Item1=Harga; Item2=Harga (DP)\n"
-        "14. /invoicefull Nama - Item1=Harga; Item2=Harga (Lunas)\n"
-        "15. /kwitansi Nama Resto - Nominal - Keterangan\n"
-        "16. /catatmasuk Nominal Keterangan\n"
-        "17. /catatkeluar Nominal Keterangan\n"
-        "18. /rekapbulan MM/YYYY (atau ketik /rekapbulan)\n"
-        "19. /spk Nama Resto - Nama Paket\n"
-        "20. /helpvoice - Tutorial lengkap Voice Command\n\n"
-        "🎙️ *SUPER VOICE COMMAND:* Kirim Voice Note untuk memerintah bot mencatat jadwal, centang visit, bikin invoice, SPK, hingga mencatat pengeluaran tanpa ngetik!"
+        "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\n"
+        "Halo bos! Mau ngurusin apa kita hari ini?\n\n"
+        "Silakan tap menu di bawah pesan ini, atau kalau lagi repot di jalan, langsung aja kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, bikin SPK, dll) 🎙️🔥"
     )
-    bot.reply_to(message, teks, parse_mode='Markdown')
+    bot.reply_to(message, teks, reply_markup=markup, parse_mode='Markdown')
 
-@bot.message_handler(commands=['helpvoice'])
+# --- HANDLER KLIK TOMBOL INLINE ---
+@bot.callback_query_handler(func=lambda call: call.data.startswith('menu_'))
+def handle_inline_menu(call):
+    bot.answer_callback_query(call.id) # Acknowledge klik agar loading hilang
+    
+    if call.data == 'menu_visit':
+        call.message.text = "/jadwalvisit"
+        list_visit(call.message)
+    elif call.data == 'menu_posting':
+        call.message.text = "/jadwalposting"
+        list_posting(call.message)
+    elif call.data == 'menu_rekap':
+        call.message.text = "/rekapbulan"
+        rekap_bulan(call.message)
+    elif call.data == 'menu_helpvoice':
+        send_help_voice(call.message)
+    elif call.data == 'menu_admin':
+        teks = (
+            "💼 *MENU ADMINISTRASI KLIEN*\n\n"
+            "Untuk fitur ini, kamu bisa pakai *Suara* (cek di 🎙️ Bantuan Suara) atau ketik manual dengan format:\n\n"
+            "📝 *Surat Perjanjian (SPK):*\n`/spk Nama Resto - Nama Paket`\n\n"
+            "📄 *Invoice DP (50%):*\n`/invoice Nama Resto - Item=Harga`\n\n"
+            "📄 *Invoice Lunas (Full):*\n`/invoicefull Nama Resto - Item=Harga`\n\n"
+            "🧾 *Kwitansi Lunas:*\n`/kwitansi Nama Resto - Nominal - Keterangan`"
+        )
+        bot.send_message(call.message.chat.id, teks, parse_mode='Markdown')
+    elif call.data == 'menu_settings':
+        teks = (
+            "⚙️ *PENGATURAN RATE CARD & S&K*\n\n"
+            "Pilih dokumen yang mau kamu lihat (klik link biru):\n"
+            "1. /ratecard (Untuk ubah: /editrc)\n"
+            "2. /ratecardumkm (Untuk ubah: /editrcumkm)\n"
+            "3. /sk (Untuk ubah: /editsk)"
+        )
+        bot.send_message(call.message.chat.id, teks, parse_mode='Markdown')
+
+@bot.message_handler(commands=['help', 'helpvoice'])
 def send_help_voice(message):
     teks = (
         "🎙️ *PANDUAN PERINTAH SUARA (VOICE COMMAND)*\n\n"
@@ -773,7 +799,7 @@ def catat_keluar(message):
 @bot.message_handler(commands=['rekapbulan'])
 def rekap_bulan(message):
     try:
-        parts = message.text.split(maxsplit=1)
+        parts = message.text.split(maxsplit=1) if message.text and message.text.startswith('/rekapbulan') else ['/rekapbulan']
         if len(parts) > 1:
             target_month_str = parts[1].strip()
             target_date = datetime.strptime(target_month_str, "%m/%Y")
@@ -828,9 +854,9 @@ def rekap_bulan(message):
         bot.send_message(message.chat.id, reply, parse_mode='Markdown')
         
     except ValueError:
-        bot.reply_to(message, "⚠️ Format bulan salah. Gunakan MM/YYYY (contoh: /rekapbulan 06/2026)")
+        bot.send_message(message.chat.id, "⚠️ Format bulan salah. Gunakan MM/YYYY (contoh: /rekapbulan 06/2026)")
     except Exception as e:
-        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+        bot.send_message(message.chat.id, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['kwitansi'])
 def generate_kwitansi(message):
@@ -970,27 +996,27 @@ def send_ratecard(message):
     try:
         records = settings_ws.get_all_records()
         teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecard'), DEFAULT_RATECARD)
-        bot.reply_to(message, teks, parse_mode='Markdown')
+        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
 
 @bot.message_handler(commands=['ratecardumkm', 'rcumkm'])
 def send_ratecard_umkm(message):
     try:
         records = settings_ws.get_all_records()
         teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'ratecardumkm'), DEFAULT_RATECARDUMKM)
-        bot.reply_to(message, teks, parse_mode='Markdown')
+        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
 
 @bot.message_handler(commands=['sk'])
 def send_sk(message):
     try:
         records = settings_ws.get_all_records()
         teks = next((str(r['Value']) for r in records if str(r.get('Key', '')).strip().lower() == 'sk'), DEFAULT_SK)
-        bot.reply_to(message, teks, parse_mode='Markdown')
+        bot.send_message(message.chat.id, teks, parse_mode='Markdown')
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
+        bot.send_message(message.chat.id, f"⚠️ Terjadi kesalahan saat membaca Google Sheets: {e}")
 
 def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full_payment=False):
     pdf = FPDF()
