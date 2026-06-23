@@ -46,15 +46,16 @@ except gspread.exceptions.WorksheetNotFound:
     keuangan_ws = sheet.add_worksheet(title="Keuangan", rows="1000", cols="4")
     keuangan_ws.append_row(["Tanggal", "Jenis", "Nominal", "Keterangan"])
 
-# Koneksi Google Calendar (Aman dari Crash)
+# Koneksi Google Calendar
 try:
     calendar_service = build('calendar', 'v3', credentials=creds)
 except Exception as e:
     print(f"Warning: Google Calendar API belum diaktifkan. {e}")
     calendar_service = None
 
+
 # ==========================================
-# 2. VARIABEL & KONSTANTA
+# 2. VARIABEL & TEKS DEFAULT
 # ==========================================
 HARI_INDO = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 BULAN_INDO = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
@@ -66,19 +67,39 @@ Halo! Terima kasih atas ketertarikannya bekerja sama. Berikut adalah penawaran p
 📦 *PAKET REGULER (Review Standar)*
 • 1x Visit & Liputan Resto
 • 1x Video tayang di TikTok & IG Reels
-• Harga: Rp 500.000"""
+• ✨ *FREE Collab on Instagram*
+• Keep video permanent
+• Harga: Rp 500.000
+
+🚀 *PAKET GACOR (Grand Opening / Event)*
+• 1x Visit & Liputan Prioritas
+• 1x Video (TikTok & IG Reels) dengan Hook Khusus Promosi
+• Harga: Rp 800.000
+
+➕ *ADDITIONAL MENU*
+• Kualitas 4K: +Rp 300.000
+• Additional Story (Instagram): +Rp 30.000/story
+
+Silakan balas pesan ini jika ada paket yang sesuai! 🙏"""
 
 DEFAULT_RATECARDUMKM = """🤝 *RATE CARD KHUSUS UMKM*
 
+Halo! Sebagai bentuk *support* untuk usaha rintisan dan UMKM kuliner lokal, Cicipin Bogor menyediakan penawaran khusus:
+
 🌱 *PAKET SUPPORT UMKM*
 • 1x Visit & Liputan Outlet
-• 1x Video tayang di IG Reels
-• Harga Khusus: *Rp 400.000*"""
+• 1x Video tayang di IG Reels & TikTok
+• Keep video permanent
+• Harga Khusus: *Rp 400.000*
 
-DEFAULT_SK = """📝 *SYARAT & KETENTUAN (S&K) KERJA SAMA*
-1. DP 50% wajib dibayarkan maksimal H-3.
-2. Pelunasan sisa 50% dilakukan maksimal H-1 sebelum video tayang.
-3. Hak cipta video sepenuhnya milik creator."""
+Mari maju bersama memajukan kuliner lokal! 🙏"""
+
+DEFAULT_SK = """📝 *SYARAT & KETENTUAN (S&K)*
+1. Pihak resto menyediakan menu andalan yang akan di-review.
+2. DP 50% wajib dibayarkan maksimal H-3 sebelum visit.
+3. Pelunasan sisa 50% dilakukan maksimal H-1 sebelum video tayang.
+4. Jika klien membatalkan sepihak, DP dianggap hangus.
+5. Hak cipta video sepenuhnya milik creator (Dilarang re-upload utuh)."""
 
 try:
     settings_ws = sheet.worksheet('Pengaturan')
@@ -110,10 +131,7 @@ def sync_lisensi_from_sheet():
         ws.append_row(["ExpiredDate", trial_exp.strftime("%d/%m/%Y %H:%M:%S")])
         ws.append_row(["AccessKey", new_key])
         
-        LICENSE_CACHE['status'] = "TRIAL"
-        LICENSE_CACHE['exp_date'] = trial_exp
-        LICENSE_CACHE['key'] = new_key
-        LICENSE_CACHE['last_checked'] = datetime.now()
+        LICENSE_CACHE.update({'status': "TRIAL", 'exp_date': trial_exp, 'key': new_key, 'last_checked': datetime.now()})
         return
         
     records = ws.get_all_records()
@@ -142,8 +160,7 @@ def check_lisensi_gate(message_or_call):
     if datetime.now() > LICENSE_CACHE['exp_date']:
         warning_text = (
             "⚠️ *BOT TERKUNCI (MASA AKTIF HABIS)* ⚠️\n\n"
-            "Masa penggunaan bot (Trial/Bulanan) kamu telah habis.\n"
-            "Cek *Google Sheets* tab *'Lisensi'* untuk melihat Kode Akses terbaru yang sudah di-generate otomatis.\n\n"
+            "Masa penggunaan bot kamu telah habis. Cek *Google Sheets* tab *'Lisensi'* untuk melihat Kode Akses terbaru.\n\n"
             "🔑 Ketik perintah ini untuk mengaktifkan:\n`/lisensi [Kode_Akses]`"
         )
         if is_call:
@@ -171,10 +188,8 @@ def update_pengaturan(key, new_value):
         settings_ws.append_row([key, new_value])
 
 def safe_date_parse(date_str):
-    try:
-        return datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
-    except:
-        return datetime.min
+    try: return datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
+    except: return datetime.min
 
 def parse_tanggal_jam(teks):
     teks_lower = teks.lower()
@@ -185,8 +200,7 @@ def parse_tanggal_jam(teks):
     elif "besok" in teks_lower: date_str = (now + timedelta(days=1)).strftime("%d/%m/%Y")
     elif "lusa" in teks_lower: date_str = (now + timedelta(days=2)).strftime("%d/%m/%Y")
     else:
-        bulan_dict = {"januari": "01", "februari": "02", "maret": "03", "april": "04", "mei": "05", "juni": "06", 
-                      "juli": "07", "agustus": "08", "september": "09", "oktober": "10", "november": "11", "desember": "12"}
+        bulan_dict = {"januari": "01", "februari": "02", "maret": "03", "april": "04", "mei": "05", "juni": "06", "juli": "07", "agustus": "08", "september": "09", "oktober": "10", "november": "11", "desember": "12"}
         for bln_indo, bln_angka in bulan_dict.items():
             match = re.search(fr'(?:tanggal\s+)?(\d{{1,2}})\s+{bln_indo}(?:\s+(?:tahun\s+)?(\d{{4}}))?', teks_lower)
             if match:
@@ -223,54 +237,20 @@ def push_to_google_calendar(resto_name, date_str, time_str):
         start_dt = datetime.strptime(f"{date_str} {time_str}", "%d/%m/%Y %H:%M")
         end_dt = start_dt + timedelta(hours=2)
         event_body = {
-            'summary': f"🎥 Visit Liputan: {resto_name}",
+            'summary': f"🎥 Visit: {resto_name}",
             'location': 'Bogor',
-            'description': f"Jadwal liputan Food Vlogger untuk {resto_name}. Diinput otomatis melalui Bot J.A.R.V.I.S.",
+            'description': f"Jadwal liputan Food Vlogger untuk {resto_name}.",
             'start': {'dateTime': start_dt.strftime("%Y-%m-%dT%H:%M:%S"), 'timeZone': 'Asia/Jakarta'},
             'end': {'dateTime': end_dt.strftime("%Y-%m-%dT%H:%M:%S"), 'timeZone': 'Asia/Jakarta'},
             'reminders': {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': 120}, {'method': 'popup', 'minutes': 1440}]},
         }
         calendar_service.events().insert(calendarId=CALENDAR_ID, body=event_body).execute()
         return True
-    except Exception as e:
-        print(f"Error Calendar: {e}")
-        return False
-
-def kirim_reminder_h1():
-    try:
-        if not CHAT_ID_LIST: return
-        besok_str = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
-        visits = visit_ws.get_all_records()
-        posts = post_ws.get_all_records()
-
-        visit_besok = [v for v in visits if str(v.get('Tanggal', '')).strip() == besok_str]
-        post_besok = [p for p in posts if str(p.get('TanggalPosting', '')).strip() == besok_str]
-
-        pesan = f"🔔 *REMINDER H-1 JADWAL BESOK ({besok_str})*\n\n🎥 *Jadwal Visit Besok:*\n"
-        if visit_besok:
-            for idx, v in enumerate(sorted(visit_besok, key=lambda x: str(x.get('Jam', ''))), 1):
-                pesan += f"{idx}. ⏰ {v['Jam']} -> {v['Resto']}\n"
-        else: pesan += "• Tidak ada visit.\n"
-
-        pesan += "\n🚀 *Jadwal Posting Konten Besok:*\n"
-        if post_besok:
-            for p in post_besok:
-                if str(p.get('Resto', '')).lower() != 'dummy': pesan += f"• 📝 Konten: {p['Resto']}\n"
-        else: pesan += "• Tidak ada postingan.\n"
-
-        pesan += "\nJangan lupa siapkan gear kamera ya! 💪🔥"
-        for chat_id in CHAT_ID_LIST:
-            try: bot.send_message(chat_id, pesan, parse_mode='Markdown')
-            except: pass
-    except Exception as e: print(e)
-
-scheduler = BackgroundScheduler(timezone="Asia/Jakarta") 
-scheduler.add_job(kirim_reminder_h1, 'cron', hour=20, minute=0)
-scheduler.start()
+    except: return False
 
 
 # ==========================================
-# 5. UI KEYBOARDS
+# 5. UI KEYBOARDS & MENU
 # ==========================================
 def get_main_menu_markup():
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
@@ -302,40 +282,11 @@ def get_pagination_markup(current_page, total_items, prefix):
     markup.add(telebot.types.InlineKeyboardButton('🔙 Kembali ke Menu', callback_data='menu_main'))
     return markup
 
-
-# ==========================================
-# 6. ROUTER & HANDLER UTAMA
-# ==========================================
 @bot.message_handler(commands=['start', 'menu'])
 def send_welcome(message):
     if not check_lisensi_gate(message): return
     teks = "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\nHalo bos! Mau ngurusin apa kita hari ini?\n\nSilakan tap menu di bawah pesan ini, atau kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, dll) 🎙️🔥"
     bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
-
-@bot.message_handler(commands=['lisensi'])
-def proses_lisensi(message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        bot.reply_to(message, "⚠️ Format salah. Ketik: `/lisensi [Kode_Akses]`", parse_mode="Markdown")
-        return
-    input_key = parts[1].strip()
-    sync_lisensi_from_sheet()
-    
-    if input_key == LICENSE_CACHE.get('key', '') and input_key != "":
-        new_exp = datetime.now() + timedelta(days=30)
-        new_key = generate_key()
-        ws = sheet.worksheet('Lisensi')
-        try:
-            ws.update_cell(ws.find("Status").row, 2, "ACTIVE")
-            ws.update_cell(ws.find("ExpiredDate").row, 2, new_exp.strftime("%d/%m/%Y %H:%M:%S"))
-            ws.update_cell(ws.find("AccessKey").row, 2, new_key)
-        except: pass
-        
-        LICENSE_CACHE['status'], LICENSE_CACHE['exp_date'], LICENSE_CACHE['key'], LICENSE_CACHE['last_checked'] = "ACTIVE", new_exp, new_key, datetime.now()
-        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot aktif 30 hari ke depan. Kode bulan depan sudah digenerate otomatis di Sheet.", parse_mode="Markdown")
-        send_welcome(message)
-    else:
-        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!*", parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
 def handle_inline_menu(call):
@@ -361,7 +312,7 @@ def handle_inline_menu(call):
 
 
 # ==========================================
-# 7. LOGIKA VOICE COMMAND
+# 6. ROUTING PERINTAH SUARA (VOICE COMMAND)
 # ==========================================
 @bot.message_handler(commands=['help', 'helpvoice'])
 def send_help_voice(message, is_edit=False):
@@ -373,6 +324,8 @@ def send_help_voice(message, is_edit=False):
         "• *Batal:* _\"Bot, batal visit besok jam 2 siang\"_\n"
         "• *Posting:* _\"Bot, tambah posting lusa konten Bakso Mercon\"_\n"
         "• *Invoice:* _\"Bot, bikin invoice resto Brano paket Gacor harga 800 ribu lunas\"_\n"
+        "• *SPK:* _\"Bot, bikin SPK resto Kopi Daun paket Gacor\"_\n"
+        "• *Kwitansi:* _\"Bot, bikin kwitansi resto Sate Maranggi nominal 400 ribu untuk pelunasan\"_\n"
         "• *Keuangan:* _\"Bot, catat pengeluaran beli bensin 50 ribu\"_"
     )
     if is_edit: bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=teks, parse_mode='Markdown', reply_markup=get_back_markup())
@@ -382,7 +335,7 @@ def send_help_voice(message, is_edit=False):
 def handle_voice_global(message):
     if not check_lisensi_gate(message): return
     try:
-        msg = bot.reply_to(message, "⏳ _Mencerna suara..._", parse_mode="Markdown")
+        msg = bot.reply_to(message, "⏳ _Sedang mencerna suara..._", parse_mode="Markdown")
         
         file_info = bot.get_file(message.voice.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
@@ -402,37 +355,56 @@ def handle_voice_global(message):
         # Routing Perintah
         if "help voice" in teks_lower or "bantuan suara" in teks_lower:
             return send_help_voice(message)
+        
         elif any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
             if "visit" in teks_lower: return list_visit(message)
             elif "posting" in teks_lower: return list_posting(message)
             elif "keuangan" in teks_lower or "bulan" in teks_lower: return rekap_bulan(message)
+            
         elif any(kata in teks_lower for kata in ["centang", "selesai", "tandai"]) and "visit" in teks_lower:
             resto = re.search(r'(?:resto|di|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
             resto_str = resto.group(1).strip() if resto else teks_lower.replace("centang","").replace("visit","").replace("resto","").strip()
             message.text = f"/centangvisit {resto_str}"
             return mark_done_visit(message)
+            
         elif any(kata in teks_lower for kata in ["batal", "hapus"]) and "visit" in teks_lower:
             date_str, time_str = parse_tanggal_jam(teks_lower)
             if not date_str or not time_str: return bot.send_message(message.chat.id, "⚠️ Sebutkan tanggal & jam.")
             message.text = f"/batalvisit {date_str} {time_str}"
             return cancel_visit(message)
+            
         elif any(kata in teks_lower for kata in ["batal", "hapus"]) and "posting" in teks_lower:
             date_str, _ = parse_tanggal_jam(teks_lower)
             if not date_str: return bot.send_message(message.chat.id, "⚠️ Sebutkan tanggal posting.")
             message.text = f"/batalposting {date_str}"
             return cancel_posting(message)
+            
         elif any(kata in teks_lower for kata in ["visit", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
-            resto = re.search(r'(?:resto|di|ke)\s+([a-zA-Z0-9\s]+)', teks_lower)
+            resto = re.search(r'(?:di\s+resto|di|resto|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
             resto_str = resto.group(1).strip().title() if resto else "Resto Baru"
             message.text = f"/tambahvisit {date_str or datetime.now().strftime('%d/%m/%Y')} {time_str or '12:00'} {resto_str}"
             return add_visit(message)
+            
         elif "posting" in teks_lower or "konten" in teks_lower:
             date_str, _ = parse_tanggal_jam(teks_lower)
             resto = re.search(r'(?:konten|resto)\s+([a-zA-Z0-9\s]+)', teks_lower)
             resto_str = resto.group(1).strip().title() if resto else "Konten"
             message.text = f"/tambahposting {date_str or datetime.now().strftime('%d/%m/%Y')} {resto_str}"
             return add_posting(message)
+            
+        elif any(kata in teks_lower for kata in ["rate card", "ratecard", "harga paket"]):
+            if "umkm" in teks_lower:
+                message.text = "/ratecardumkm"
+                return send_docs(message)
+            message.text = "/ratecard"
+            return send_docs(message)
+            
+        elif any(kata in teks_lower for kata in ["syarat dan ketentuan", "aturan main"]):
+            message.text = "/sk"
+            return send_docs(message)
+
+        # FITUR ADMINISTRASI (DIPERBAIKI)
         elif "invoice" in teks_lower:
             is_full = "full" in teks_lower or "lunas" in teks_lower
             nominal = extract_nominal(teks_lower)
@@ -442,8 +414,33 @@ def handle_voice_global(message):
                 if not m_all:
                     mr = re.search(r'resto\s+(.+?)\s+(?:harga|nominal)', teks_lower)
                     if mr: resto = mr.group(1).title()
-                message.text = f"/{'invoicefull' if is_full else 'invoice'} {resto} - {item}={nominal}"
-                return generate_invoice_full(message) if is_full else generate_invoice(message)
+                
+                cmd = "/invoicefull" if is_full else "/invoice"
+                message.text = f"{cmd} {resto} - {item}={nominal}"
+                return handle_invoice(message) # <<< TERHUBUNG DENGAN BENAR
+            else:
+                return bot.send_message(message.chat.id, "⚠️ Format invoice suara kurang jelas. Sebut harga nominalnya.")
+                
+        elif "kwitansi" in teks_lower:
+            match_kwt = re.search(r'(?:kwitansi|resto)\s+(.+?)\s+(?:sebesar|nominal|harga)\s+(.+?)\s+(?:untuk|buat)\s+(.+)', teks_lower)
+            if match_kwt:
+                resto = match_kwt.group(1).title()
+                nominal_kwt = extract_nominal(match_kwt.group(2))
+                ket = match_kwt.group(3).capitalize()
+                if nominal_kwt:
+                    message.text = f"/kwitansi {resto} - {nominal_kwt} - {ket}"
+                    return generate_kwitansi(message) # <<< TERHUBUNG DENGAN BENAR
+            return bot.send_message(message.chat.id, "⚠️ Format kwitansi suara salah.")
+            
+        elif "spk" in teks_lower:
+            match_spk = re.search(r'(?:spk|resto)\s+(.+?)\s+(?:dengan\s+)?(?:paket)\s+(.+)', teks_lower)
+            if match_spk:
+                resto = match_spk.group(1).title()
+                paket = "Paket " + match_spk.group(2).title()
+                message.text = f"/spk {resto} - {paket}"
+                return generate_spk(message) # <<< TERHUBUNG DENGAN BENAR
+            return bot.send_message(message.chat.id, "⚠️ Format SPK suara salah.")
+            
         else:
             nominal = extract_nominal(teks_lower)
             if not nominal: return bot.send_message(message.chat.id, "⚠️ Maaf, perintah suara tidak dipahami.")
@@ -451,15 +448,131 @@ def handle_voice_global(message):
             if any(k in teks_lower for k in ["pemasukan", "terima", "cair", "pelunasan"]):
                 keuangan_ws.append_row([tgl, "Pemasukan", nominal, teks_hasil.capitalize()])
                 bot.send_message(message.chat.id, "✅ *Pemasukan Dicatat via Suara!*", parse_mode="Markdown")
-            elif any(k in teks_lower for k in ["keluar", "beli", "bayar", "bensin", "parkir"]):
+            elif any(k in teks_lower for k in ["keluar", "beli", "bayar", "bensin", "parkir", "makan"]):
                 keuangan_ws.append_row([tgl, "Pengeluaran", nominal, teks_hasil.capitalize()])
                 bot.send_message(message.chat.id, "📉 *Pengeluaran Dicatat via Suara!*", parse_mode="Markdown")
+
     except Exception as e:
-        bot.reply_to(message, f"⚠️ Kesalahan sistem: {e}")
+        bot.reply_to(message, f"⚠️ Kesalahan sistem voice: {e}")
 
 
 # ==========================================
-# 8. HANDLERS DATA & COMMANDS
+# 8. HANDLERS DOKUMEN & ADMIN (PDF)
+# ==========================================
+def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full=False):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("helvetica", "B", 24)
+    pdf.cell(0, 8, "Cicipin Bogor", ln=True)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
+    pdf.ln(10)
+    
+    pdf.set_font("helvetica", "B", 18)
+    pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True)
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, f"No: {no_inv} | Klien: {resto} | Tgl: {tgl_sekarang}", ln=True)
+    pdf.ln(5)
+    
+    for i in parsed_items:
+        pdf.cell(120, 10, f" {i['name']}", border=1)
+        pdf.cell(70, 10, f"Rp {i['price']:,}", border=1, ln=True, align="R")
+        
+    if not is_full:
+        pdf.cell(120, 10, "Down Payment (DP 50%)", border=1, align="R")
+        pdf.cell(70, 10, f"Rp {int(total_harga*0.5):,}", border=1, ln=True, align="R")
+    else:
+        pdf.cell(120, 10, "Total Lunas", border=1, align="R")
+        pdf.cell(70, 10, f"Rp {total_harga:,}", border=1, ln=True, align="R")
+        
+    return pdf
+
+@bot.message_handler(commands=['invoice', 'invoicefull'])
+def handle_invoice(message):
+    if not check_lisensi_gate(message): return
+    try:
+        is_full = 'full' in message.text.split()[0]
+        parts = message.text.split(maxsplit=1)[1].split('-', 1)
+        resto = parts[0].strip()
+        items = [{"name": i.split('=')[0].strip(), "price": int(i.split('=')[1].replace('.','').replace('Rp','').strip())} for i in parts[1].split(';') if '=' in i]
+        total = sum(i['price'] for i in items)
+        no_inv = f"INV/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
+        
+        pdf = build_invoice_pdf(resto, items, total, no_inv, datetime.now().strftime("%d/%m/%Y"), is_full)
+        pdf_name = f"Invoice_{resto.replace(' ', '')}.pdf"
+        pdf.output(pdf_name)
+        
+        caption = f"✅ *Invoice Dibuat!*\nKlien: {resto}\nTotal: Rp{total:,}\nTagihan: Rp{total if is_full else int(total*0.5):,}"
+        with open(pdf_name, 'rb') as f: bot.send_document(message.chat.id, f, caption=caption, parse_mode='Markdown')
+        os.remove(pdf_name)
+    except Exception as e: bot.reply_to(message, "⚠️ Format salah. Gunakan: /invoice Nama - Item=100000")
+
+@bot.message_handler(commands=['kwitansi'])
+def generate_kwitansi(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or '-' not in parts[1]: return bot.reply_to(message, "⚠️ Format: /kwitansi Resto - Nominal - Keterangan")
+            
+        subparts = parts[1].split('-')
+        resto = subparts[0].strip()
+        nominal = int(subparts[1].strip().replace('.', '').replace('Rp', '').strip())
+        keterangan = subparts[2].strip()
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        pdf_name = f"Kwitansi_{resto.replace(' ', '')}.pdf"
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 24)
+        pdf.cell(0, 8, "Cicipin Bogor", ln=True)
+        pdf.set_font("helvetica", "", 10)
+        pdf.cell(0, 5, "Instagram Food Vlogger", ln=True)
+        pdf.ln(10)
+        
+        pdf.set_font("helvetica", "B", 18)
+        pdf.cell(0, 10, "KWITANSI PEMBAYARAN", ln=True, align="C")
+        pdf.ln(8)
+        
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "Telah Terima Dari", 0, 0); pdf.set_font("helvetica", "", 11); pdf.cell(0, 8, f": {resto}", ln=True)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "Uang Sejumlah", 0, 0); pdf.set_font("helvetica", "B", 14); pdf.cell(0, 8, f": Rp {nominal:,}", ln=True)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(45, 8, "Untuk Pembayaran", 0, 0); pdf.set_font("helvetica", "", 11); pdf.multi_cell(0, 8, f": {keterangan}")
+        
+        pdf.output(pdf_name)
+        with open(pdf_name, 'rb') as f: bot.send_document(message.chat.id, f, caption=f"✅ Kwitansi Lunas untuk {resto}", parse_mode='Markdown')
+        os.remove(pdf_name)
+    except Exception as e: bot.reply_to(message, f"Kesalahan Kwitansi: {e}")
+
+@bot.message_handler(commands=['spk'])
+def generate_spk(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2 or '-' not in parts[1]: return bot.reply_to(message, "⚠️ Format: /spk Resto - Nama Paket")
+            
+        resto, paket = parts[1].split('-', 1)
+        resto, paket = resto.strip(), paket.strip()
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        pdf_name = f"SPK_{resto.replace(' ', '')}.pdf"
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("helvetica", "B", 14)
+        pdf.cell(0, 8, "SURAT PERJANJIAN KERJA SAMA (MoU)", ln=True, align="C")
+        pdf.ln(8)
+        pdf.set_font("helvetica", "", 11)
+        pdf.multi_cell(0, 6, f"Pada hari ini {tgl_sekarang}, disepakati kerja sama promosi digital antara Cicipin Bogor dan {resto} untuk {paket}.")
+        
+        pdf.output(pdf_name)
+        with open(pdf_name, 'rb') as f: bot.send_document(message.chat.id, f, caption=f"✅ SPK Dibuat untuk {resto}", parse_mode='Markdown')
+        os.remove(pdf_name)
+    except Exception as e: bot.reply_to(message, f"Kesalahan SPK: {e}")
+
+
+# ==========================================
+# 9. HANDLERS DATA & JADWAL
 # ==========================================
 @bot.message_handler(commands=['jadwalvisit'])
 def list_visit(message, is_edit=False, page=0):
@@ -505,7 +618,7 @@ def list_posting(message, is_edit=False, page=0):
             markup = get_pagination_markup(page, total_items, 'post_page')
         
         bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup) if is_edit else bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
-    except Exception as e: bot.send_message(message.chat.id, f"Kesalahan: {e}")
+    except Exception as e: bot.reply_to(message, f"Kesalahan: {e}")
 
 @bot.message_handler(commands=['tambahvisit'])
 def add_visit(message):
@@ -530,22 +643,6 @@ def add_visit(message):
 
         bot.send_message(message.chat.id, f"✅ *Berhasil!*\n🎥 Visit: {resto_name} ({date_str} {time_str})\n🚀 Posting: {post_date.strftime('%d/%m/%Y')}{cal_msg}", parse_mode="Markdown")
     except Exception as e: bot.send_message(message.chat.id, f"Error: {e}")
-
-@bot.message_handler(commands=['centangvisit'])
-def mark_done_visit(message):
-    if not check_lisensi_gate(message): return
-    try:
-        parts = message.text.split(maxsplit=1)
-        if len(parts) < 2: return
-        target = parts[1].strip().lower()
-        visits = visit_ws.get_all_records()
-        for idx, v in enumerate(visits, start=2):
-            resto = str(v.get('Resto', '')).strip()
-            if target in resto.lower() and "✅" not in resto:
-                visit_ws.update_cell(idx, 3, f"{resto} ✅")
-                return bot.send_message(message.chat.id, f"✅ Jadwal visit *{resto}* ditandai selesai.", parse_mode='Markdown')
-        bot.send_message(message.chat.id, "❌ Tidak ditemukan atau sudah dicentang.")
-    except Exception as e: bot.reply_to(message, str(e))
 
 @bot.message_handler(commands=['tambahposting'])
 def add_posting(message):
@@ -591,7 +688,6 @@ def rekap_bulan(message, is_edit=False):
         target_date = datetime.now()
         target_month_str = target_date.strftime("%m/%Y")
         total_masuk, total_keluar = 0, 0
-        pemasukan_list, pengeluaran_list = [], []
         
         for row in keuangan_ws.get_all_records():
             tgl = str(row.get('Tanggal', '')).strip()
@@ -599,9 +695,9 @@ def rekap_bulan(message, is_edit=False):
             try:
                 dt = datetime.strptime(tgl, "%d/%m/%Y")
                 if dt.month == target_date.month and dt.year == target_date.year:
-                    jns, nom, ket = str(row.get('Jenis', '')).lower(), int(row.get('Nominal', 0)), str(row.get('Keterangan', ''))
-                    if jns == 'pemasukan': total_masuk += nom; pemasukan_list.append(f"• {tgl}: Rp{nom:,} ({ket})")
-                    elif jns == 'pengeluaran': total_keluar += nom; pengeluaran_list.append(f"• {tgl}: Rp{nom:,} ({ket})")
+                    jns, nom = str(row.get('Jenis', '')).lower(), int(row.get('Nominal', 0))
+                    if jns == 'pemasukan': total_masuk += nom
+                    elif jns == 'pengeluaran': total_keluar += nom
             except: pass
                 
         reply = f"📊 *REKAP BULAN {target_month_str}*\n\n🟢 Masuk: Rp{total_masuk:,}\n🔴 Keluar: Rp{total_keluar:,}\n⭐ Profit: Rp{total_masuk - total_keluar:,}\n"
@@ -634,53 +730,5 @@ def edit_docs(message):
         update_pengaturan(key_map[cmd], parts[1].strip())
         bot.reply_to(message, "✅ Teks berhasil diperbarui!")
     except Exception as e: bot.reply_to(message, f"Error: {e}")
-
-def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is_full=False):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 24)
-    pdf.cell(0, 8, "Cicipin Bogor", ln=True)
-    pdf.set_font("helvetica", "", 10)
-    pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
-    pdf.ln(10)
-    
-    pdf.set_font("helvetica", "B", 18)
-    pdf.cell(0, 10, "INVOICE TAGIHAN", ln=True)
-    pdf.set_font("helvetica", "", 10)
-    pdf.cell(0, 6, f"No: {no_inv} | Klien: {resto} | Tgl: {tgl_sekarang}", ln=True)
-    pdf.ln(5)
-    
-    for i in parsed_items:
-        pdf.cell(120, 10, f" {i['name']}", border=1)
-        pdf.cell(70, 10, f"Rp {i['price']:,}", border=1, ln=True, align="R")
-        
-    if not is_full:
-        pdf.cell(120, 10, "Down Payment (DP 50%)", border=1, align="R")
-        pdf.cell(70, 10, f"Rp {int(total_harga*0.5):,}", border=1, ln=True, align="R")
-    else:
-        pdf.cell(120, 10, "Total Lunas", border=1, align="R")
-        pdf.cell(70, 10, f"Rp {total_harga:,}", border=1, ln=True, align="R")
-        
-    return pdf
-
-@bot.message_handler(commands=['invoice', 'invoicefull'])
-def handle_invoice(message):
-    if not check_lisensi_gate(message): return
-    try:
-        is_full = 'full' in message.text.split()[0]
-        parts = message.text.split(maxsplit=1)[1].split('-', 1)
-        resto = parts[0].strip()
-        items = [{"name": i.split('=')[0].strip(), "price": int(i.split('=')[1].replace('.','').replace('Rp','').strip())} for i in parts[1].split(';') if '=' in i]
-        total = sum(i['price'] for i in items)
-        no_inv = f"INV/{datetime.now().strftime('%Y%m%d')}/{str(message.message_id)[-4:]}"
-        
-        pdf = build_invoice_pdf(resto, items, total, no_inv, datetime.now().strftime("%d/%m/%Y"), is_full)
-        pdf_name = f"Invoice_{resto}.pdf"
-        pdf.output(pdf_name)
-        
-        caption = f"✅ *Invoice Dibuat!*\nKlien: {resto}\nTotal: Rp{total:,}\nTagihan: Rp{total if is_full else int(total*0.5):,}"
-        with open(pdf_name, 'rb') as f: bot.send_document(message.chat.id, f, caption=caption, parse_mode='Markdown')
-        os.remove(pdf_name)
-    except Exception as e: bot.reply_to(message, "⚠️ Format salah. Gunakan: /invoice Nama - Item=100000")
 
 bot.infinity_polling()
