@@ -378,7 +378,77 @@ def handle_voice_global(message):
             if not date_str: return bot.send_message(message.chat.id, "⚠️ Sebutkan tanggal posting yang mau dihapus.")
             message.text = f"/batalposting {date_str}"
             return cancel_posting(message)
+
+        # -------------------------------------------------------------
+        # FITUR ADMINISTRASI DIPINDAH KE ATAS (AGAR 'KONTEN' TIDAK OVERLAP)
+        # -------------------------------------------------------------
+        elif "invoice" in teks_lower:
+            is_full = "full" in teks_lower or "lunas" in teks_lower
+            nominal = extract_nominal(teks_lower)
             
+            if nominal:
+                resto, item = "Klien", "Paket Konten"
+                # Cari pola yang menangkap dari setelah kata invoice/untuk/resto sampai sebelum kata harga/nominal
+                m_resto = re.search(r'(?:invoice)(?:\s+untuk|\s+resto|\s+buat)?\s+(.+?)\s+(?:harga|seharga|nominal|sebesar|\d)', teks_lower)
+                if m_resto: 
+                    raw_text = m_resto.group(1).strip()
+                    # Cek jika pengguna menyebutkan kata "paket"
+                    if " paket " in f" {raw_text} ":
+                        r_split = re.split(r'\spaket\s', raw_text, 1)
+                        resto = r_split[0].strip().title()
+                        item = "Paket " + r_split[1].strip().title()
+                    else:
+                        resto = raw_text.title()
+                
+                cmd = "/invoicefull" if is_full else "/invoice"
+                message.text = f"{cmd} {resto} - {item}={nominal}"
+                return handle_invoice(message) 
+            else:
+                return bot.send_message(message.chat.id, "⚠️ Format invoice kurang jelas. Mohon sebutkan nominal harganya.")
+                
+        elif "kwitansi" in teks_lower or "kuitansi" in teks_lower:
+            nominal_kwt = extract_nominal(teks_lower)
+            if nominal_kwt:
+                resto, ket = "Klien", "Pembayaran Liputan"
+                
+                m_resto = re.search(r'(?:kwitansi|kuitansi)(?:\s+untuk|\s+resto|\s+buat)?\s+(.+?)\s+(?:sebesar|nominal|harga|seharga|\d)', teks_lower)
+                if m_resto: 
+                    raw_text = m_resto.group(1).strip()
+                    if " paket " in f" {raw_text} ":
+                        r_split = re.split(r'\spaket\s', raw_text, 1)
+                        resto = r_split[0].strip().title()
+                        ket = "Paket " + r_split[1].strip().capitalize()
+                    else:
+                        resto = raw_text.title()
+                
+                # Cek jika ada kata "untuk [keterangan]" di akhir kalimat
+                m_ket = re.search(r'(?:untuk|buat)\s+([a-zA-Z0-9\s]+)$', teks_lower)
+                if m_ket and m_ket.group(1).strip().lower() not in resto.lower():
+                    ket = m_ket.group(1).strip().capitalize()
+                    
+                message.text = f"/kwitansi {resto} - {nominal_kwt} - {ket}"
+                return generate_kwitansi(message) 
+            return bot.send_message(message.chat.id, "⚠️ Format kuitansi kurang jelas. Sebutkan nominalnya.")
+            
+        elif "spk" in teks_lower:
+            resto, paket = "Klien", "Paket Liputan"
+            
+            m_resto = re.search(r'(?:spk)(?:\s+untuk|\s+resto|\s+buat)?\s+(.+?)\s+(?:dengan\s+paket|paket)', teks_lower)
+            if m_resto: 
+                resto = m_resto.group(1).strip().title()
+            else:
+                mr = re.search(r'(?:spk)(?:\s+untuk|\s+resto|\s+buat)?\s+([a-zA-Z0-9\s]+)', teks_lower)
+                if mr: resto = mr.group(1).strip().title()
+                
+            m_paket = re.search(r'(?:paket)\s+([a-zA-Z0-9\s]+)', teks_lower)
+            if m_paket: paket = "Paket " + m_paket.group(1).strip().title()
+            
+            message.text = f"/spk {resto} - {paket}"
+            return generate_spk(message) 
+
+        # -------------------------------------------------------------
+        # JADWAL & PERINTAH LAINNYA
+        # -------------------------------------------------------------
         elif any(kata in teks_lower for kata in ["visit", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
             resto = re.search(r'(?:di\s+resto|di|resto|ke|untuk|buat)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -403,58 +473,6 @@ def handle_voice_global(message):
         elif any(kata in teks_lower for kata in ["syarat dan ketentuan", "aturan main", "s & k"]):
             message.text = "/sk"
             return send_docs(message)
-
-        # FITUR ADMINISTRASI (DENGAN SMART EXTRACTOR)
-        elif "invoice" in teks_lower:
-            is_full = "full" in teks_lower or "lunas" in teks_lower
-            nominal = extract_nominal(teks_lower)
-            
-            if nominal:
-                resto, item = "Klien", "Paket Konten"
-                # Cari pola: "untuk/resto [Nama] paket [Nama] harga/seharga"
-                m_resto = re.search(r'(?:resto|untuk|buat)\s+([a-zA-Z0-9\s]+?)\s+(?:paket|item|harga|seharga|nominal|sebesar|\d)', teks_lower)
-                if m_resto: resto = m_resto.group(1).strip().title()
-                
-                m_paket = re.search(r'(?:paket|item)\s+([a-zA-Z0-9\s]+?)\s+(?:harga|seharga|nominal|sebesar|\d)', teks_lower)
-                if m_paket: item = m_paket.group(1).strip().title()
-                
-                cmd = "/invoicefull" if is_full else "/invoice"
-                message.text = f"{cmd} {resto} - {item}={nominal}"
-                return handle_invoice(message) 
-            else:
-                return bot.send_message(message.chat.id, "⚠️ Format invoice kurang jelas. Mohon sebutkan nominal harganya.")
-                
-        elif "kwitansi" in teks_lower or "kuitansi" in teks_lower:
-            nominal_kwt = extract_nominal(teks_lower)
-            if nominal_kwt:
-                resto, ket = "Klien", "Pembayaran Liputan"
-                
-                m_resto = re.search(r'(?:kwitansi|kuitansi)(?:\s+untuk|\s+resto|\s+buat)?\s+([a-zA-Z0-9\s]+?)\s+(?:sebesar|nominal|harga|seharga|\d)', teks_lower)
-                if m_resto: resto = m_resto.group(1).strip().title()
-                
-                # Cek jika ada kata "untuk [keterangan]" di akhir kalimat
-                m_ket = re.search(r'(?:untuk|buat)\s+([a-zA-Z0-9\s]+)$', teks_lower)
-                if m_ket and m_ket.group(1).strip().lower() not in resto.lower():
-                    ket = m_ket.group(1).strip().capitalize()
-                    
-                message.text = f"/kwitansi {resto} - {nominal_kwt} - {ket}"
-                return generate_kwitansi(message) 
-            return bot.send_message(message.chat.id, "⚠️ Format kuitansi kurang jelas. Sebutkan nominalnya.")
-            
-        elif "spk" in teks_lower:
-            resto, paket = "Klien", "Paket Liputan"
-            
-            m_resto = re.search(r'(?:spk)(?:\s+untuk|\s+resto|\s+buat)?\s+([a-zA-Z0-9\s]+?)\s+(?:dengan\s+paket|paket)', teks_lower)
-            if m_resto: resto = m_resto.group(1).strip().title()
-            else:
-                mr = re.search(r'(?:spk)(?:\s+untuk|\s+resto|\s+buat)?\s+([a-zA-Z0-9\s]+)', teks_lower)
-                if mr: resto = mr.group(1).strip().title()
-                
-            m_paket = re.search(r'(?:paket)\s+([a-zA-Z0-9\s]+)', teks_lower)
-            if m_paket: paket = "Paket " + m_paket.group(1).strip().title()
-            
-            message.text = f"/spk {resto} - {paket}"
-            return generate_spk(message) 
             
         else:
             nominal = extract_nominal(teks_lower)
@@ -923,31 +941,5 @@ def rekap_bulan(message, is_edit=False):
         if is_edit: bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
         else: bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
     except Exception as e: bot.send_message(message.chat.id, f"Error: {e}")
-
-@bot.message_handler(commands=['ratecard', 'rc', 'ratecardumkm', 'rcumkm', 'sk'])
-def send_docs(message):
-    if not check_lisensi_gate(message): return
-    cmd = message.text.replace('/', '').lower()
-    key_map = {'ratecard': 'ratecard', 'rc': 'ratecard', 'ratecardumkm': 'ratecardumkm', 'rcumkm': 'ratecardumkm', 'sk': 'sk'}
-    try:
-        val = next((str(r['Value']) for r in settings_ws.get_all_records() if str(r.get('Key', '')).strip().lower() == key_map[cmd]), "-")
-        bot.send_message(message.chat.id, val, parse_mode='Markdown')
-    except: pass
-
-@bot.message_handler(commands=['editrc', 'editratecard', 'editrcumkm', 'editratecardumkm', 'editsk'])
-def edit_docs(message):
-    if not check_lisensi_gate(message): return
-    try:
-        cmd = message.text.split()[0].replace('/edit', '').replace('ratecard', 'rc')
-        parts = message.text.split(maxsplit=1)
-        key_map = {'rc': 'ratecard', 'rcumkm': 'ratecardumkm', 'sk': 'sk'}
-        
-        if len(parts) < 2:
-            val = next((str(r['Value']) for r in settings_ws.get_all_records() if str(r.get('Key', '')).strip().lower() == key_map[cmd]), "-")
-            return bot.reply_to(message, f"📋 *Template saat ini:*\n\n`{val}`\n\nKirim ulang dengan format `/edit{cmd} [Teks Baru]`", parse_mode='Markdown')
-            
-        update_pengaturan(key_map[cmd], parts[1].strip())
-        bot.reply_to(message, "✅ Teks berhasil diperbarui!")
-    except Exception as e: bot.reply_to(message, f"Error: {e}")
 
 bot.infinity_polling()
