@@ -352,8 +352,8 @@ def handle_voice_global(message):
         teks_lower = teks_hasil.lower()
         bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n🚀 _Memproses..._", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
-        # Routing Perintah
-        if "help voice" in teks_lower or "bantuan suara" in teks_lower:
+        # Routing Perintah Bantuan (Lebih Longgar)
+        if any(kata in teks_lower for kata in ["help", "bantuan", "tutorial", "panduan", "cara pakai", "cara perintah"]):
             return send_help_voice(message)
         
         elif any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
@@ -379,9 +379,7 @@ def handle_voice_global(message):
             message.text = f"/batalposting {date_str}"
             return cancel_posting(message)
 
-        # -------------------------------------------------------------
         # FITUR ADMINISTRASI DIPINDAH KE ATAS (AGAR 'KONTEN' TIDAK OVERLAP)
-        # -------------------------------------------------------------
         elif "invoice" in teks_lower:
             is_full = "full" in teks_lower or "lunas" in teks_lower
             nominal = extract_nominal(teks_lower)
@@ -446,9 +444,7 @@ def handle_voice_global(message):
             message.text = f"/spk {resto} - {paket}"
             return generate_spk(message) 
 
-        # -------------------------------------------------------------
         # JADWAL & PERINTAH LAINNYA
-        # -------------------------------------------------------------
         elif any(kata in teks_lower for kata in ["visit", "tambah jadwal"]):
             date_str, time_str = parse_tanggal_jam(teks_lower)
             resto = re.search(r'(?:di\s+resto|di|resto|ke|untuk|buat)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -496,7 +492,6 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf = FPDF()
     pdf.add_page()
     
-    # ATURAN LOGO DAN TEKS HEADER
     if os.path.exists("logo.png"):
         pdf.image("logo.png", x=10, y=8, w=28)
         pdf.set_xy(42, 12)
@@ -520,7 +515,6 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
     
-    # SPACER AGAR GARIS TIDAK MENABRAK LOGO
     current_y = pdf.get_y()
     if os.path.exists("logo.png") and current_y < 40:
         pdf.set_y(42)
