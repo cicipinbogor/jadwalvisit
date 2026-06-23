@@ -282,11 +282,49 @@ def get_pagination_markup(current_page, total_items, prefix):
     markup.add(telebot.types.InlineKeyboardButton('🔙 Kembali ke Menu', callback_data='menu_main'))
     return markup
 
+# ==========================================
+# 6. ROUTER PERINTAH TEKS DASAR & LISENSI
+# ==========================================
 @bot.message_handler(commands=['start', 'menu'])
 def send_welcome(message):
     if not check_lisensi_gate(message): return
     teks = "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\nHalo bos! Mau ngurusin apa kita hari ini?\n\nSilakan tap menu di bawah pesan ini, atau kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, dll) 🎙️🔥"
     bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
+
+@bot.message_handler(commands=['lisensi'])
+def proses_lisensi(message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        bot.reply_to(message, "⚠️ Format salah. Ketik: `/lisensi [Kode_Akses]`", parse_mode="Markdown")
+        return
+        
+    input_key = parts[1].strip()
+    sync_lisensi_from_sheet()
+    
+    if input_key == LICENSE_CACHE.get('key', '') and input_key != "":
+        new_exp = datetime.now() + timedelta(days=30)
+        new_key = generate_key()
+        
+        ws = sheet.worksheet('Lisensi')
+        try:
+            c1 = ws.find("Status")
+            ws.update_cell(c1.row, 2, "ACTIVE")
+            c2 = ws.find("ExpiredDate")
+            ws.update_cell(c2.row, 2, new_exp.strftime("%d/%m/%Y %H:%M:%S"))
+            c3 = ws.find("AccessKey")
+            ws.update_cell(c3.row, 2, new_key)
+        except Exception as e:
+            pass # Fallback if headers change
+            
+        LICENSE_CACHE['status'] = "ACTIVE"
+        LICENSE_CACHE['exp_date'] = new_exp
+        LICENSE_CACHE['key'] = new_key
+        LICENSE_CACHE['last_checked'] = datetime.now()
+        
+        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot telah terbuka dan aktif selama 30 hari ke depan. _(Kunci akses untuk bulan depan sudah digenerate dan dikirim ke Google Sheets)_.", parse_mode="Markdown")
+        send_welcome(message)
+    else:
+        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!* Silakan cek kunci terbaru di tab 'Lisensi' Google Sheets.", parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
 def handle_inline_menu(call):
@@ -312,7 +350,7 @@ def handle_inline_menu(call):
 
 
 # ==========================================
-# 6. ROUTING PERINTAH SUARA (SUPER SMART NLP)
+# 7. ROUTING PERINTAH SUARA (SUPER SMART NLP)
 # ==========================================
 @bot.message_handler(commands=['help', 'helpvoice'])
 def send_help_voice(message, is_edit=False):
@@ -360,7 +398,7 @@ def handle_voice_global(message):
         elif any(kata in teks_lower for kata in ["lihat", "cek", "rekap", "kirim", "tampil", "tunjuk"]):
             if "posting" in teks_lower or "konten" in teks_lower: return list_posting(message)
             elif "keuangan" in teks_lower or "bulan" in teks_lower: return rekap_bulan(message)
-            else: return list_visit(message) # Default to visit schedule if "kirimin jadwal visit"
+            else: return list_visit(message) 
             
         elif any(kata in teks_lower for kata in ["centang", "selesai", "tandai"]) and "visit" in teks_lower:
             resto = re.search(r'(?:resto|di|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
