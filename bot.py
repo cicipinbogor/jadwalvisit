@@ -188,7 +188,7 @@ def update_pengaturan(key, new_value):
         settings_ws.append_row([key, new_value])
 
 def safe_date_parse(date_str):
-    try: return datetime.strptime(str(date_str).strip(), "%d/%m/%Y")
+    try: return datetime.strptime(str(date_str).strip().replace('-', '/'), "%d/%m/%Y")
     except: return datetime.min
 
 def parse_tanggal_jam(teks):
@@ -352,14 +352,15 @@ def handle_voice_global(message):
         teks_lower = teks_hasil.lower()
         bot.edit_message_text(f"🗣️ *Terdengar:* _{teks_hasil}_\n🚀 _Memproses..._", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
 
-        # Routing Perintah Bantuan (Lebih Longgar)
+        # Routing Perintah Bantuan
         if any(kata in teks_lower for kata in ["help", "bantuan", "tutorial", "panduan", "cara pakai", "cara perintah"]):
             return send_help_voice(message)
         
-        elif any(kata in teks_lower for kata in ["lihat", "cek", "rekap"]):
-            if "visit" in teks_lower: return list_visit(message)
-            elif "posting" in teks_lower: return list_posting(message)
+        # Routing Lihat Jadwal / Rekap
+        elif any(kata in teks_lower for kata in ["lihat", "cek", "rekap", "kirim", "tampil", "tunjuk"]):
+            if "posting" in teks_lower or "konten" in teks_lower: return list_posting(message)
             elif "keuangan" in teks_lower or "bulan" in teks_lower: return rekap_bulan(message)
+            else: return list_visit(message) # Default to visit schedule if "kirimin jadwal visit"
             
         elif any(kata in teks_lower for kata in ["centang", "selesai", "tandai"]) and "visit" in teks_lower:
             resto = re.search(r'(?:resto|di|ke|namanya)\s+([a-zA-Z0-9\s]+)', teks_lower)
@@ -379,18 +380,16 @@ def handle_voice_global(message):
             message.text = f"/batalposting {date_str}"
             return cancel_posting(message)
 
-        # FITUR ADMINISTRASI DIPINDAH KE ATAS (AGAR 'KONTEN' TIDAK OVERLAP)
+        # FITUR ADMINISTRASI
         elif "invoice" in teks_lower:
             is_full = "full" in teks_lower or "lunas" in teks_lower
             nominal = extract_nominal(teks_lower)
             
             if nominal:
                 resto, item = "Klien", "Paket Konten"
-                # Cari pola yang menangkap dari setelah kata invoice/untuk/resto sampai sebelum kata harga/nominal
                 m_resto = re.search(r'(?:invoice)(?:\s+untuk|\s+resto|\s+buat)?\s+(.+?)\s+(?:harga|seharga|nominal|sebesar|\d)', teks_lower)
                 if m_resto: 
                     raw_text = m_resto.group(1).strip()
-                    # Cek jika pengguna menyebutkan kata "paket"
                     if " paket " in f" {raw_text} ":
                         r_split = re.split(r'\spaket\s', raw_text, 1)
                         resto = r_split[0].strip().title()
@@ -419,7 +418,6 @@ def handle_voice_global(message):
                     else:
                         resto = raw_text.title()
                 
-                # Cek jika ada kata "untuk [keterangan]" di akhir kalimat
                 m_ket = re.search(r'(?:untuk|buat)\s+([a-zA-Z0-9\s]+)$', teks_lower)
                 if m_ket and m_ket.group(1).strip().lower() not in resto.lower():
                     ket = m_ket.group(1).strip().capitalize()
@@ -502,15 +500,12 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 8, "Cicipin Bogor", ln=True)
     
-    if os.path.exists("logo.png"):
-        pdf.set_x(42)
-        
+    if os.path.exists("logo.png"): pdf.set_x(42)
     pdf.set_font("helvetica", "", 10)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
     
-    if os.path.exists("logo.png"):
-        pdf.set_x(42)
+    if os.path.exists("logo.png"): pdf.set_x(42)
     pdf.set_font("helvetica", "I", 9)
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
@@ -574,7 +569,6 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     
     pdf.set_font("helvetica", "B", 11)
     pdf.cell(0, 6, "Metode Pembayaran Transfer:", ln=True)
-    
     pdf.set_font("helvetica", "", 11)
     pdf.cell(0, 6, "- Bank: Seabank", ln=True)
     pdf.cell(0, 6, "- No. Rekening: 901177950990", ln=True)
@@ -810,7 +804,14 @@ def list_visit(message, is_edit=False, page=0):
     if not check_lisensi_gate(message): return
     try:
         visits = visit_ws.get_all_records()
-        valid_visits = sorted([v for v in visits if str(v.get('Tanggal', '')).strip() and v['Resto'].lower() != 'dummy'], key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', ''))))
+        valid_visits = []
+        for v in visits:
+            tgl_str = str(v.get('Tanggal', '')).strip().replace('-', '/')
+            resto = str(v.get('Resto', '')).strip()
+            if tgl_str and resto.lower() != 'dummy':
+                valid_visits.append({'Tanggal': tgl_str, 'Jam': str(v.get('Jam', '')), 'Resto': resto})
+                
+        valid_visits = sorted(valid_visits, key=lambda x: (safe_date_parse(x.get('Tanggal', '')), str(x.get('Jam', ''))))
         
         total_items = len(valid_visits)
         if total_items == 0:
@@ -827,7 +828,8 @@ def list_visit(message, is_edit=False, page=0):
                 reply += f"• {v['Resto']} {v['Jam']}\n"
             markup = get_pagination_markup(page, total_items, 'visit_page')
             
-        bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup) if is_edit else bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
+        if is_edit: bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup) 
+        else: bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
     except Exception as e: bot.send_message(message.chat.id, f"Kesalahan: {e}")
 
 @bot.message_handler(commands=['jadwalposting'])
@@ -835,7 +837,14 @@ def list_posting(message, is_edit=False, page=0):
     if not check_lisensi_gate(message): return
     try:
         posts = post_ws.get_all_records()
-        valid_posts = sorted([p for p in posts if str(p.get('TanggalPosting', '')).strip() and p['Resto'].lower() != 'dummy'], key=lambda x: safe_date_parse(x.get('TanggalPosting', '')))
+        valid_posts = []
+        for p in posts:
+            tgl_str = str(p.get('TanggalPosting', '')).strip().replace('-', '/')
+            resto = str(p.get('Resto', '')).strip()
+            if tgl_str and resto.lower() != 'dummy':
+                valid_posts.append({'TanggalPosting': tgl_str, 'Resto': resto})
+                
+        valid_posts = sorted(valid_posts, key=lambda x: safe_date_parse(x.get('TanggalPosting', '')))
         
         total_items = len(valid_posts)
         if total_items == 0:
@@ -848,7 +857,8 @@ def list_posting(message, is_edit=False, page=0):
                 reply += f"• {HARI_INDO[dt.weekday()]} {dt.day}, {p['TanggalPosting']} - Konten: {p['Resto']}\n" if dt != datetime.min else f"• {p['TanggalPosting']} - {p['Resto']}\n"
             markup = get_pagination_markup(page, total_items, 'post_page')
         
-        bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup) if is_edit else bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
+        if is_edit: bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=markup) 
+        else: bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=markup)
     except Exception as e: bot.reply_to(message, f"Kesalahan: {e}")
 
 @bot.message_handler(commands=['tambahvisit'])
@@ -860,7 +870,7 @@ def add_visit(message):
         date_str, time_str, resto_name = parts[1].replace('-', '/'), parts[2], parts[3]
         visit_date = datetime.strptime(date_str, "%d/%m/%Y")
         
-        daily = [v for v in visit_ws.get_all_records() if str(v.get('Tanggal', '')).strip() == date_str]
+        daily = [v for v in visit_ws.get_all_records() if str(v.get('Tanggal', '')).strip().replace('-', '/') == date_str]
         if len(daily) >= 3: return bot.reply_to(message, "❌ Kuota visit penuh.")
         if any(str(v.get('Jam', '')).strip() == time_str for v in daily): return bot.reply_to(message, "❌ Jam bentrok!")
 
@@ -868,7 +878,13 @@ def add_visit(message):
         cal_status = push_to_google_calendar(resto_name, date_str, time_str)
         cal_msg = "\n🗓️ Sinkron ke Calendar HP!" if cal_status else ""
 
-        post_dates = [datetime.strptime(p['TanggalPosting'], "%d/%m/%Y") for p in post_ws.get_all_records() if p.get('TanggalPosting') and p['Resto'].lower() != 'dummy']
+        post_dates = []
+        for p in post_ws.get_all_records():
+            tgl_p = str(p.get('TanggalPosting', '')).strip().replace('-', '/')
+            if tgl_p and p.get('Resto', '').lower() != 'dummy':
+                try: post_dates.append(datetime.strptime(tgl_p, "%d/%m/%Y"))
+                except: pass
+                
         post_date = max(max(post_dates) + timedelta(days=1), visit_date + timedelta(days=1)) if post_dates else visit_date + timedelta(days=1)
         post_ws.append_row([post_date.strftime("%d/%m/%Y"), resto_name])
 
@@ -894,7 +910,7 @@ def cancel_visit(message):
         if len(parts) < 3: return
         date_str, time_str = parts[1].replace('-', '/'), parts[2]
         for idx, v in enumerate(visit_ws.get_all_records(), start=2):
-            if str(v.get('Tanggal', '')).strip() == date_str and str(v.get('Jam', '')).strip() == time_str:
+            if str(v.get('Tanggal', '')).strip().replace('-', '/') == date_str and str(v.get('Jam', '')).strip() == time_str:
                 visit_ws.delete_rows(idx)
                 return bot.reply_to(message, "🗑 Jadwal visit dibatalkan.")
     except Exception as e: bot.reply_to(message, str(e))
@@ -907,7 +923,7 @@ def cancel_posting(message):
         if len(parts) < 2: return
         post_date = parts[1].replace('-', '/')
         for idx, p in enumerate(post_ws.get_all_records(), start=2):
-            if str(p.get('TanggalPosting', '')).strip() == post_date:
+            if str(p.get('TanggalPosting', '')).strip().replace('-', '/') == post_date:
                 post_ws.delete_rows(idx)
                 return bot.reply_to(message, "🗑 Jadwal posting dibatalkan.")
     except Exception as e: bot.reply_to(message, str(e))
@@ -921,7 +937,7 @@ def rekap_bulan(message, is_edit=False):
         total_masuk, total_keluar = 0, 0
         
         for row in keuangan_ws.get_all_records():
-            tgl = str(row.get('Tanggal', '')).strip()
+            tgl = str(row.get('Tanggal', '')).strip().replace('-', '/')
             if not tgl: continue
             try:
                 dt = datetime.strptime(tgl, "%d/%m/%Y")
@@ -935,5 +951,31 @@ def rekap_bulan(message, is_edit=False):
         if is_edit: bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
         else: bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
     except Exception as e: bot.send_message(message.chat.id, f"Error: {e}")
+
+@bot.message_handler(commands=['ratecard', 'rc', 'ratecardumkm', 'rcumkm', 'sk'])
+def send_docs(message):
+    if not check_lisensi_gate(message): return
+    cmd = message.text.replace('/', '').lower()
+    key_map = {'ratecard': 'ratecard', 'rc': 'ratecard', 'ratecardumkm': 'ratecardumkm', 'rcumkm': 'ratecardumkm', 'sk': 'sk'}
+    try:
+        val = next((str(r['Value']) for r in settings_ws.get_all_records() if str(r.get('Key', '')).strip().lower() == key_map[cmd]), "-")
+        bot.send_message(message.chat.id, val, parse_mode='Markdown')
+    except: pass
+
+@bot.message_handler(commands=['editrc', 'editratecard', 'editrcumkm', 'editratecardumkm', 'editsk'])
+def edit_docs(message):
+    if not check_lisensi_gate(message): return
+    try:
+        cmd = message.text.split()[0].replace('/edit', '').replace('ratecard', 'rc')
+        parts = message.text.split(maxsplit=1)
+        key_map = {'rc': 'ratecard', 'rcumkm': 'ratecardumkm', 'sk': 'sk'}
+        
+        if len(parts) < 2:
+            val = next((str(r['Value']) for r in settings_ws.get_all_records() if str(r.get('Key', '')).strip().lower() == key_map[cmd]), "-")
+            return bot.reply_to(message, f"📋 *Template saat ini:*\n\n`{val}`\n\nKirim ulang dengan format `/edit{cmd} [Teks Baru]`", parse_mode='Markdown')
+            
+        update_pengaturan(key_map[cmd], parts[1].strip())
+        bot.reply_to(message, "✅ Teks berhasil diperbarui!")
+    except Exception as e: bot.reply_to(message, f"Error: {e}")
 
 bot.infinity_polling()
