@@ -463,30 +463,37 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf = FPDF()
     pdf.add_page()
     
+    # ATURAN LOGO DAN TEKS HEADER
     if os.path.exists("logo.png"):
-        pdf.image("logo.png", x=10, y=10, w=32)
-        pdf.set_xy(45, 10)
+        pdf.image("logo.png", x=10, y=8, w=28)
+        pdf.set_xy(42, 12)
     else:
-        pdf.set_xy(10, 10)
+        pdf.set_xy(10, 12)
         
     pdf.set_font("helvetica", "B", 24)
     pdf.set_text_color(0, 0, 0)
     pdf.cell(0, 8, "Cicipin Bogor", ln=True)
     
     if os.path.exists("logo.png"):
-        pdf.set_x(45)
+        pdf.set_x(42)
         
     pdf.set_font("helvetica", "", 10)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
     
     if os.path.exists("logo.png"):
-        pdf.set_x(45)
+        pdf.set_x(42)
     pdf.set_font("helvetica", "I", 9)
     pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
     
-    pdf.ln(5)
+    # SPACER AGAR GARIS TIDAK MENABRAK LOGO
+    current_y = pdf.get_y()
+    if os.path.exists("logo.png") and current_y < 40:
+        pdf.set_y(42)
+    else:
+        pdf.ln(8)
+        
     pdf.set_draw_color(200, 200, 200)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(10)
@@ -597,26 +604,31 @@ def generate_kwitansi(message):
         pdf.add_page()
         
         if os.path.exists("logo.png"):
-            pdf.image("logo.png", x=10, y=2, w=32)
-            pdf.set_xy(45, 10)
+            pdf.image("logo.png", x=10, y=8, w=28)
+            pdf.set_xy(42, 12)
         else:
-            pdf.set_xy(10, 10)
+            pdf.set_xy(10, 12)
             
         pdf.set_font("helvetica", "B", 24)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 8, "Cicipin Bogor", ln=True)
         
-        if os.path.exists("logo.png"): pdf.set_x(45)
+        if os.path.exists("logo.png"): pdf.set_x(42)
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(100, 100, 100)
         pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
         
-        if os.path.exists("logo.png"): pdf.set_x(45)
+        if os.path.exists("logo.png"): pdf.set_x(42)
         pdf.set_font("helvetica", "I", 9)
         pdf.set_text_color(120, 120, 120)
         pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
         
-        pdf.ln(3)
+        current_y = pdf.get_y()
+        if os.path.exists("logo.png") and current_y < 40:
+            pdf.set_y(42)
+        else:
+            pdf.ln(8)
+            
         pdf.set_draw_color(200, 200, 200)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(12)
@@ -678,26 +690,31 @@ def generate_spk(message):
         pdf.add_page()
         
         if os.path.exists("logo.png"):
-            pdf.image("logo.png", x=10, y=2, w=32)
-            pdf.set_xy(45, 10)
+            pdf.image("logo.png", x=10, y=8, w=28)
+            pdf.set_xy(42, 12)
         else:
-            pdf.set_xy(10, 10)
+            pdf.set_xy(10, 12)
 
         pdf.set_font("helvetica", "B", 24)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(0, 8, "Cicipin Bogor", ln=True)
 
-        if os.path.exists("logo.png"): pdf.set_x(45)
+        if os.path.exists("logo.png"): pdf.set_x(42)
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(100, 100, 100)
         pdf.cell(0, 5, "Instagram Food Vlogger & Digital Content Creator", ln=True)
 
-        if os.path.exists("logo.png"): pdf.set_x(45)
+        if os.path.exists("logo.png"): pdf.set_x(42)
         pdf.set_font("helvetica", "I", 9)
         pdf.set_text_color(120, 120, 120)
         pdf.cell(0, 5, "WhatsApp: 085173134492 | Email: cicipinbogor@gmail.com", ln=True)
 
-        pdf.ln(3)
+        current_y = pdf.get_y()
+        if os.path.exists("logo.png") and current_y < 40:
+            pdf.set_y(42)
+        else:
+            pdf.ln(8)
+
         pdf.set_draw_color(200, 200, 200)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(10)
@@ -891,31 +908,5 @@ def rekap_bulan(message, is_edit=False):
         if is_edit: bot.edit_message_text(chat_id=message.chat.id, message_id=message.message_id, text=reply, parse_mode='Markdown', reply_markup=get_back_markup())
         else: bot.send_message(message.chat.id, reply, parse_mode='Markdown', reply_markup=get_back_markup())
     except Exception as e: bot.send_message(message.chat.id, f"Error: {e}")
-
-@bot.message_handler(commands=['ratecard', 'rc', 'ratecardumkm', 'rcumkm', 'sk'])
-def send_docs(message):
-    if not check_lisensi_gate(message): return
-    cmd = message.text.replace('/', '').lower()
-    key_map = {'ratecard': 'ratecard', 'rc': 'ratecard', 'ratecardumkm': 'ratecardumkm', 'rcumkm': 'ratecardumkm', 'sk': 'sk'}
-    try:
-        val = next((str(r['Value']) for r in settings_ws.get_all_records() if str(r.get('Key', '')).strip().lower() == key_map[cmd]), "-")
-        bot.send_message(message.chat.id, val, parse_mode='Markdown')
-    except: pass
-
-@bot.message_handler(commands=['editrc', 'editratecard', 'editrcumkm', 'editratecardumkm', 'editsk'])
-def edit_docs(message):
-    if not check_lisensi_gate(message): return
-    try:
-        cmd = message.text.split()[0].replace('/edit', '').replace('ratecard', 'rc')
-        parts = message.text.split(maxsplit=1)
-        key_map = {'rc': 'ratecard', 'rcumkm': 'ratecardumkm', 'sk': 'sk'}
-        
-        if len(parts) < 2:
-            val = next((str(r['Value']) for r in settings_ws.get_all_records() if str(r.get('Key', '')).strip().lower() == key_map[cmd]), "-")
-            return bot.reply_to(message, f"📋 *Template saat ini:*\n\n`{val}`\n\nKirim ulang dengan format `/edit{cmd} [Teks Baru]`", parse_mode='Markdown')
-            
-        update_pengaturan(key_map[cmd], parts[1].strip())
-        bot.reply_to(message, "✅ Teks berhasil diperbarui!")
-    except Exception as e: bot.reply_to(message, f"Error: {e}")
 
 bot.infinity_polling()
