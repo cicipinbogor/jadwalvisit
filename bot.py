@@ -916,7 +916,7 @@ def add_visit(message):
         visit_date = datetime.strptime(date_str, "%d/%m/%Y")
         
         daily = [v for v in visit_ws.get_all_records() if str(v.get('Tanggal', '')).strip().replace('-', '/') == date_str]
-        if len(daily) >= 3: return bot.reply_to(message, "❌ Kuota visit penuh.")
+        if len(daily) >= 4: return bot.reply_to(message, "❌ Kuota visit penuh.")
         if any(str(v.get('Jam', '')).strip() == time_str for v in daily): return bot.reply_to(message, "❌ Jam bentrok!")
 
         visit_ws.append_row([date_str, time_str, resto_name])
