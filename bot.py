@@ -160,7 +160,7 @@ def check_lisensi_gate(message_or_call):
     if datetime.now() > LICENSE_CACHE['exp_date']:
         warning_text = (
             "⚠️ *BOT TERKUNCI (MASA AKTIF HABIS)* ⚠️\n\n"
-            "Masa penggunaan bot kamu telah habis. Cek *Google Sheets* tab *'Lisensi'* untuk melihat Kode Akses terbaru.\n\n"
+            "Masa penggunaan bot kamu telah habis. Silakan hubungi Admin untuk meminta Kode Akses perpanjangan.\n\n"
             "🔑 Ketik perintah ini untuk mengaktifkan:\n`/lisensi [Kode_Akses]`"
         )
         if is_call:
@@ -314,17 +314,17 @@ def proses_lisensi(message):
             c3 = ws.find("AccessKey")
             ws.update_cell(c3.row, 2, new_key)
         except Exception as e:
-            pass # Fallback if headers change
+            pass 
             
         LICENSE_CACHE['status'] = "ACTIVE"
         LICENSE_CACHE['exp_date'] = new_exp
         LICENSE_CACHE['key'] = new_key
         LICENSE_CACHE['last_checked'] = datetime.now()
         
-        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot telah terbuka dan aktif selama 30 hari ke depan. _(Kunci akses untuk bulan depan sudah digenerate dan dikirim ke Google Sheets)_.", parse_mode="Markdown")
+        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot telah terbuka dan aktif selama 30 hari ke depan.", parse_mode="Markdown")
         send_welcome(message)
     else:
-        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!* Silakan cek kunci terbaru di tab 'Lisensi' Google Sheets.", parse_mode="Markdown")
+        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!* Silakan hubungi Admin untuk mendapatkan kunci terbaru.", parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
 def handle_inline_menu(call):
@@ -579,6 +579,7 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.cell(60, 6, f": {tgl_sekarang}", 0, 1)
     pdf.ln(10)
     
+    # Tabel Header
     pdf.set_font("helvetica", "B", 11)
     pdf.set_fill_color(240, 240, 240) 
     pdf.set_draw_color(180, 180, 180)
@@ -586,10 +587,30 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.cell(70, 10, "Biaya (IDR)", border=1, ln=True, align="C", fill=True)
     
     pdf.set_font("helvetica", "", 11)
-    for item in parsed_items:
-        pdf.cell(120, 10, f" {item['name']}", border=1, align="L")
-        pdf.cell(70, 10, f"Rp {item['price']:,}", border=1, ln=True, align="R")
     
+    # Cetak Item dengan Wrap Text Otomatis
+    for item in parsed_items:
+        text = f" {item['name']}"
+        price_text = f"Rp {item['price']:,}"
+        
+        x = pdf.get_x()
+        y = pdf.get_y()
+        
+        # Cetak deskripsi (otomatis turun ke bawah kalau kepanjangan)
+        pdf.multi_cell(120, 8, text, border=1, align="L")
+        
+        # Kalkulasi tinggi kotak yang baru saja dibuat
+        next_y = pdf.get_y()
+        row_h = next_y - y
+        
+        # Pindah kursor ke sebelah kanan untuk cetak harga dengan tinggi yang sama
+        pdf.set_xy(x + 120, y)
+        pdf.cell(70, row_h, price_text, border=1, ln=True, align="R")
+        
+        # Kembalikan kursor ke kiri bawah untuk baris selanjutnya
+        pdf.set_xy(10, next_y)
+    
+    # Cetak Total
     if not is_full:
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
