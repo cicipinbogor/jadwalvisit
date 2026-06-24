@@ -1,4 +1,4 @@
-limport telebot
+import telebot
 from telebot import types
 import gspread
 from google.oauth2.service_account import Credentials
