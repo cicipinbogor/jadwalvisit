@@ -288,6 +288,41 @@ def send_welcome(message):
     teks = "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\nHalo bos! Mau ngurusin apa kita hari ini?\n\nSilakan tap menu di bawah pesan ini, atau kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, dll) 🎙️🔥"
     bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
 
+@bot.message_handler(commands=['lisensi'])
+def proses_lisensi(message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        bot.reply_to(message, "⚠️ Format salah. Ketik: `/lisensi [Kode_Akses]`", parse_mode="Markdown")
+        return
+        
+    input_key = parts[1].strip()
+    sync_lisensi_from_sheet()
+    
+    if input_key == LICENSE_CACHE.get('key', '') and input_key != "":
+        new_exp = datetime.now() + timedelta(days=30)
+        new_key = generate_key()
+        
+        ws = sheet.worksheet('Lisensi')
+        try:
+            c1 = ws.find("Status")
+            ws.update_cell(c1.row, 2, "ACTIVE")
+            c2 = ws.find("ExpiredDate")
+            ws.update_cell(c2.row, 2, new_exp.strftime("%d/%m/%Y %H:%M:%S"))
+            c3 = ws.find("AccessKey")
+            ws.update_cell(c3.row, 2, new_key)
+        except Exception as e:
+            pass 
+            
+        LICENSE_CACHE['status'] = "ACTIVE"
+        LICENSE_CACHE['exp_date'] = new_exp
+        LICENSE_CACHE['key'] = new_key
+        LICENSE_CACHE['last_checked'] = datetime.now()
+        
+        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot telah terbuka dan aktif selama 30 hari ke depan.", parse_mode="Markdown")
+        send_welcome(message)
+    else:
+        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!* Silakan hubungi Admin untuk mendapatkan kunci terbaru.", parse_mode="Markdown")
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
 def handle_inline_menu(call):
     bot.answer_callback_query(call.id)
@@ -568,7 +603,7 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
         pdf.cell(70, 10, f"Rp {total_harga:,}", border=1, ln=True, align="R", fill=True)
         
         dp_harga = int(total_harga * 0.5)
-        pdf.cell(120, 10, "Down Payment (DP 50%)", border=1, align="R")
+        pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
         pdf.cell(70, 10, f"Rp {dp_harga:,}", border=1, ln=True, align="R")
     else:
         pdf.set_font("helvetica", "B", 11)
@@ -876,7 +911,7 @@ def add_visit(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=3)
-        if len(parts) < 4: return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/tambahvisit DD/MM/YYYY HH:MM Nama Resto`", parse_mode="Markdown")
+        if len(parts) < 4: return bot.reply_to(message, "⚠️ Format: /tambahvisit DD/MM/YYYY HH:MM Nama Resto")
         date_str, time_str, resto_name = parts[1].replace('-', '/'), parts[2], parts[3]
         visit_date = datetime.strptime(date_str, "%d/%m/%Y")
         
@@ -901,6 +936,83 @@ def add_visit(message):
         bot.send_message(message.chat.id, f"✅ *Berhasil!*\n🎥 Visit: {resto_name} ({date_str} {time_str})\n🚀 Posting: {post_date.strftime('%d/%m/%Y')}{cal_msg}", parse_mode="Markdown")
     except Exception as e: bot.send_message(message.chat.id, f"Error: {e}")
 
+@bot.message_handler(commands=['editvisit'])
+def edit_visit(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=5)
+        if len(parts) < 6:
+            return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/editvisit TglLama JamLama TglBaru JamBaru Nama Resto`", parse_mode='Markdown')
+
+        old_date = parts[1].replace('-', '/')
+        old_time = parts[2]
+        new_date = parts[3].replace('-', '/')
+        new_time = parts[4]
+        new_resto = parts[5]
+
+        datetime.strptime(new_date, "%d/%m/%Y")
+        datetime.strptime(new_time, "%H:%M")
+
+        visits = visit_ws.get_all_records()
+        
+        row_to_edit = None
+        for idx, v in enumerate(visits, start=2):
+            if str(v.get('Tanggal', '')).strip().replace('-', '/') == old_date and str(v.get('Jam', '')).strip() == old_time:
+                row_to_edit = idx
+                break
+        
+        if not row_to_edit:
+            return bot.reply_to(message, f"❌ Jadwal visit lama pada {old_date} jam {old_time} tidak ditemukan.")
+
+        other_visits = [v for v in visits if not (str(v.get('Tanggal', '')).strip().replace('-', '/') == old_date and str(v.get('Jam', '')).strip() == old_time)]
+        daily_visits_new = [v for v in other_visits if str(v.get('Tanggal', '')).strip().replace('-', '/') == new_date]
+
+        if len(daily_visits_new) >= 3:
+            return bot.reply_to(message, f"❌ Kuota visit tanggal {new_date} sudah penuh (Maks 3).")
+
+        if any(str(v.get('Jam', '')).strip() == new_time for v in daily_visits_new):
+            return bot.reply_to(message, f"❌ Jadwal jam {new_time} pada {new_date} sudah terisi. Jam tidak boleh bentrok!")
+
+        visit_ws.update_cell(row_to_edit, 1, new_date)
+        visit_ws.update_cell(row_to_edit, 2, new_time)
+        visit_ws.update_cell(row_to_edit, 3, new_resto)
+
+        bot.reply_to(message, f"✅ Jadwal visit berhasil diubah!\n\nJadwal Baru:\n📅 {new_date}\n⏰ {new_time}\n🎥 {new_resto}")
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Format tanggal/jam salah. Pastikan menggunakan DD/MM/YYYY dan HH:MM.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['centangvisit'])
+def mark_done_visit(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) < 2:
+            return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/centangvisit Nama Resto`", parse_mode='Markdown')
+            
+        target_resto = parts[1].strip().lower().replace("selesai", "").replace("sudah", "").replace("centang", "").strip()
+        visits = visit_ws.get_all_records()
+        row_to_edit = None
+        resto_asli = ""
+        
+        for idx, v in enumerate(visits, start=2):
+            resto_sheet = str(v.get('Resto', '')).strip()
+            if (target_resto in resto_sheet.lower() or resto_sheet.lower() in target_resto) and "✅" not in resto_sheet:
+                row_to_edit = idx
+                resto_asli = resto_sheet
+                break
+                
+        if row_to_edit:
+            visit_ws.update_cell(row_to_edit, 3, f"{resto_asli} ✅")
+            bot.send_message(message.chat.id, f"✅ *Sip!* Jadwal visit ke *{resto_asli}* sudah ditandai selesai.", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, f"❌ Jadwal visit ke '{parts[1]}' tidak ditemukan atau sudah dicentang sebelumnya.")
+            
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
+
 @bot.message_handler(commands=['tambahposting'])
 def add_posting(message):
     if not check_lisensi_gate(message): return
@@ -911,6 +1023,38 @@ def add_posting(message):
         post_ws.append_row([date_str, resto_name])
         bot.send_message(message.chat.id, f"✅ Jadwal posting ditambahkan.")
     except Exception as e: bot.reply_to(message, str(e))
+
+@bot.message_handler(commands=['editposting'])
+def edit_posting(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/editposting TglPosting Nama Resto Baru`", parse_mode='Markdown')
+
+        post_date = parts[1].replace('-', '/')
+        new_resto = parts[2]
+
+        datetime.strptime(post_date, "%d/%m/%Y")
+
+        posts = post_ws.get_all_records()
+        
+        row_to_edit = None
+        for idx, p in enumerate(posts, start=2):
+            if str(p.get('TanggalPosting', '')).strip().replace('-', '/') == post_date:
+                row_to_edit = idx
+                break
+        
+        if not row_to_edit:
+            return bot.reply_to(message, f"❌ Jadwal posting pada tanggal {post_date} tidak ditemukan.")
+
+        post_ws.update_cell(row_to_edit, 2, new_resto)
+        bot.reply_to(message, f"✅ Jadwal posting tanggal {post_date} berhasil diubah menjadi: 🎥 {new_resto}")
+
+    except ValueError:
+        bot.reply_to(message, "⚠️ Format tanggal salah. Pastikan menggunakan DD/MM/YYYY.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['batalvisit'])
 def cancel_visit(message):
@@ -951,6 +1095,46 @@ def cancel_posting(message):
         if not deleted:
             bot.reply_to(message, f"❌ Jadwal posting tanggal {post_date} tidak ditemukan.")
     except Exception as e: bot.reply_to(message, f"Kesalahan sistem: {str(e)}")
+
+@bot.message_handler(commands=['catatmasuk'])
+def catat_masuk(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/catatmasuk Nominal Keterangan`", parse_mode='Markdown')
+            
+        nominal = int(parts[1].replace('.', '').replace('Rp', '').strip())
+        keterangan = parts[2]
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        keuangan_ws.append_row([tgl_sekarang, "Pemasukan", nominal, keterangan])
+        
+        bot.reply_to(message, f"✅ *Pemasukan Dicatat!*\n\n📅 Tanggal: {tgl_sekarang}\n💰 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}", parse_mode='Markdown')
+    except ValueError:
+        bot.reply_to(message, "⚠️ Nominal harus berupa angka.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
+
+@bot.message_handler(commands=['catatkeluar'])
+def catat_keluar(message):
+    if not check_lisensi_gate(message): return
+    try:
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/catatkeluar Nominal Keterangan`", parse_mode='Markdown')
+            
+        nominal = int(parts[1].replace('.', '').replace('Rp', '').strip())
+        keterangan = parts[2]
+        tgl_sekarang = datetime.now().strftime("%d/%m/%Y")
+        
+        keuangan_ws.append_row([tgl_sekarang, "Pengeluaran", nominal, keterangan])
+        
+        bot.reply_to(message, f"📉 *Pengeluaran Dicatat!*\n\n📅 Tanggal: {tgl_sekarang}\n💸 Nominal: Rp {nominal:,.0f}\n📝 Ket: {keterangan}", parse_mode='Markdown')
+    except ValueError:
+        bot.reply_to(message, "⚠️ Nominal harus berupa angka.")
+    except Exception as e:
+        bot.reply_to(message, f"Terjadi kesalahan: {str(e)}")
 
 @bot.message_handler(commands=['rekapbulan'])
 def rekap_bulan(message, is_edit=False):
