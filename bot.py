@@ -1,4 +1,4 @@
-import telebot
+limport telebot
 from telebot import types
 import gspread
 from google.oauth2.service_account import Credentials
@@ -282,49 +282,11 @@ def get_pagination_markup(current_page, total_items, prefix):
     markup.add(telebot.types.InlineKeyboardButton('🔙 Kembali ke Menu', callback_data='menu_main'))
     return markup
 
-# ==========================================
-# 6. ROUTER PERINTAH TEKS DASAR & LISENSI
-# ==========================================
 @bot.message_handler(commands=['start', 'menu'])
 def send_welcome(message):
     if not check_lisensi_gate(message): return
     teks = "🤖 *Bot J.A.R.V.I.S Cicipin Bogor Aktif!*\n\nHalo bos! Mau ngurusin apa kita hari ini?\n\nSilakan tap menu di bawah pesan ini, atau kirim *Voice Note* untuk kasih perintah (jadwalin visit, rekap uang, dll) 🎙️🔥"
     bot.reply_to(message, teks, reply_markup=get_main_menu_markup(), parse_mode='Markdown')
-
-@bot.message_handler(commands=['lisensi'])
-def proses_lisensi(message):
-    parts = message.text.split()
-    if len(parts) < 2:
-        bot.reply_to(message, "⚠️ Format salah. Ketik: `/lisensi [Kode_Akses]`", parse_mode="Markdown")
-        return
-        
-    input_key = parts[1].strip()
-    sync_lisensi_from_sheet()
-    
-    if input_key == LICENSE_CACHE.get('key', '') and input_key != "":
-        new_exp = datetime.now() + timedelta(days=30)
-        new_key = generate_key()
-        
-        ws = sheet.worksheet('Lisensi')
-        try:
-            c1 = ws.find("Status")
-            ws.update_cell(c1.row, 2, "ACTIVE")
-            c2 = ws.find("ExpiredDate")
-            ws.update_cell(c2.row, 2, new_exp.strftime("%d/%m/%Y %H:%M:%S"))
-            c3 = ws.find("AccessKey")
-            ws.update_cell(c3.row, 2, new_key)
-        except Exception as e:
-            pass 
-            
-        LICENSE_CACHE['status'] = "ACTIVE"
-        LICENSE_CACHE['exp_date'] = new_exp
-        LICENSE_CACHE['key'] = new_key
-        LICENSE_CACHE['last_checked'] = datetime.now()
-        
-        bot.reply_to(message, "✅ *Lisensi Berhasil Diaktifkan!*\n\nBot telah terbuka dan aktif selama 30 hari ke depan.", parse_mode="Markdown")
-        send_welcome(message)
-    else:
-        bot.reply_to(message, "❌ *Kunci Akses Salah atau Kadaluarsa!* Silakan hubungi Admin untuk mendapatkan kunci terbaru.", parse_mode="Markdown")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('menu_') or call.data.startswith('visit_page_') or call.data.startswith('post_page_') or call.data == 'ignore')
 def handle_inline_menu(call):
@@ -350,7 +312,7 @@ def handle_inline_menu(call):
 
 
 # ==========================================
-# 7. ROUTING PERINTAH SUARA (SUPER SMART NLP)
+# 6. ROUTING PERINTAH SUARA (SUPER SMART NLP)
 # ==========================================
 @bot.message_handler(commands=['help', 'helpvoice'])
 def send_help_voice(message, is_edit=False):
@@ -579,7 +541,6 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.cell(60, 6, f": {tgl_sekarang}", 0, 1)
     pdf.ln(10)
     
-    # Tabel Header
     pdf.set_font("helvetica", "B", 11)
     pdf.set_fill_color(240, 240, 240) 
     pdf.set_draw_color(180, 180, 180)
@@ -587,37 +548,27 @@ def build_invoice_pdf(resto, parsed_items, total_harga, no_inv, tgl_sekarang, is
     pdf.cell(70, 10, "Biaya (IDR)", border=1, ln=True, align="C", fill=True)
     
     pdf.set_font("helvetica", "", 11)
-    
-    # Cetak Item dengan Wrap Text Otomatis
     for item in parsed_items:
         text = f" {item['name']}"
         price_text = f"Rp {item['price']:,}"
         
         x = pdf.get_x()
         y = pdf.get_y()
-        
-        # Cetak deskripsi (otomatis turun ke bawah kalau kepanjangan)
         pdf.multi_cell(120, 8, text, border=1, align="L")
-        
-        # Kalkulasi tinggi kotak yang baru saja dibuat
         next_y = pdf.get_y()
         row_h = next_y - y
         
-        # Pindah kursor ke sebelah kanan untuk cetak harga dengan tinggi yang sama
         pdf.set_xy(x + 120, y)
         pdf.cell(70, row_h, price_text, border=1, ln=True, align="R")
-        
-        # Kembalikan kursor ke kiri bawah untuk baris selanjutnya
         pdf.set_xy(10, next_y)
     
-    # Cetak Total
     if not is_full:
         pdf.set_font("helvetica", "B", 11)
         pdf.cell(120, 10, "Total Keseluruhan", border=1, align="R", fill=True)
         pdf.cell(70, 10, f"Rp {total_harga:,}", border=1, ln=True, align="R", fill=True)
         
         dp_harga = int(total_harga * 0.5)
-        pdf.cell(120, 10, "Down Payment (DP 50% untuk Kunci Jadwal)", border=1, align="R")
+        pdf.cell(120, 10, "Down Payment (DP 50%)", border=1, align="R")
         pdf.cell(70, 10, f"Rp {dp_harga:,}", border=1, ln=True, align="R")
     else:
         pdf.set_font("helvetica", "B", 11)
@@ -663,14 +614,14 @@ def handle_invoice(message):
         caption = f"✅ *Invoice Dibuat!*\nKlien: {resto}\nTotal: Rp{total:,}\nTagihan: Rp{total if is_full else int(total*0.5):,}"
         with open(pdf_name, 'rb') as f: bot.send_document(message.chat.id, f, caption=caption, parse_mode='Markdown')
         os.remove(pdf_name)
-    except Exception as e: bot.reply_to(message, "⚠️ Format salah. Gunakan: /invoice Nama - Item=100000")
+    except Exception as e: bot.reply_to(message, "⚠️ Format salah. Gunakan: `/invoice Nama Resto - Item=Harga`", parse_mode="Markdown")
 
 @bot.message_handler(commands=['kwitansi'])
 def generate_kwitansi(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
-        if len(parts) < 2 or '-' not in parts[1]: return bot.reply_to(message, "⚠️ Format: /kwitansi Resto - Nominal - Keterangan")
+        if len(parts) < 2 or '-' not in parts[1]: return bot.reply_to(message, "⚠️ Format salah. Gunakan: `/kwitansi Nama Resto - Nominal - Keterangan`", parse_mode="Markdown")
             
         subparts = parts[1].split('-')
         resto = subparts[0].strip()
@@ -759,7 +710,7 @@ def generate_spk(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
-        if len(parts) < 2 or '-' not in parts[1]: return bot.reply_to(message, "⚠️ Format: /spk Resto - Nama Paket")
+        if len(parts) < 2 or '-' not in parts[1]: return bot.reply_to(message, "⚠️ Format salah. Gunakan: `/spk Nama Resto - Nama Paket`", parse_mode="Markdown")
             
         resto, paket = parts[1].split('-', 1)
         resto, paket = resto.strip(), paket.strip()
@@ -925,7 +876,7 @@ def add_visit(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=3)
-        if len(parts) < 4: return bot.reply_to(message, "⚠️ Format: /tambahvisit DD/MM/YYYY HH:MM Nama Resto")
+        if len(parts) < 4: return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/tambahvisit DD/MM/YYYY HH:MM Nama Resto`", parse_mode="Markdown")
         date_str, time_str, resto_name = parts[1].replace('-', '/'), parts[2], parts[3]
         visit_date = datetime.strptime(date_str, "%d/%m/%Y")
         
@@ -955,7 +906,7 @@ def add_posting(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
-        if len(parts) < 3: return
+        if len(parts) < 3: return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/tambahposting DD/MM/YYYY Nama Konten`", parse_mode="Markdown")
         date_str, resto_name = parts[1].replace('-', '/'), parts[2]
         post_ws.append_row([date_str, resto_name])
         bot.send_message(message.chat.id, f"✅ Jadwal posting ditambahkan.")
@@ -966,26 +917,40 @@ def cancel_visit(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=2)
-        if len(parts) < 3: return
+        if len(parts) < 3: return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/batalvisit DD/MM/YYYY HH:MM`", parse_mode="Markdown")
+        
         date_str, time_str = parts[1].replace('-', '/'), parts[2]
+        deleted = False
         for idx, v in enumerate(visit_ws.get_all_records(), start=2):
             if str(v.get('Tanggal', '')).strip().replace('-', '/') == date_str and str(v.get('Jam', '')).strip() == time_str:
                 visit_ws.delete_rows(idx)
-                return bot.reply_to(message, "🗑 Jadwal visit dibatalkan.")
-    except Exception as e: bot.reply_to(message, str(e))
+                bot.reply_to(message, f"🗑 Jadwal visit pada {date_str} jam {time_str} berhasil dibatalkan.")
+                deleted = True
+                break
+                
+        if not deleted:
+            bot.reply_to(message, f"❌ Jadwal visit pada {date_str} jam {time_str} tidak ditemukan.")
+    except Exception as e: bot.reply_to(message, f"Kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['batalposting'])
 def cancel_posting(message):
     if not check_lisensi_gate(message): return
     try:
         parts = message.text.split(maxsplit=1)
-        if len(parts) < 2: return
+        if len(parts) < 2: return bot.reply_to(message, "⚠️ Format salah. Gunakan:\n`/batalposting DD/MM/YYYY`", parse_mode="Markdown")
+        
         post_date = parts[1].replace('-', '/')
+        deleted = False
         for idx, p in enumerate(post_ws.get_all_records(), start=2):
             if str(p.get('TanggalPosting', '')).strip().replace('-', '/') == post_date:
                 post_ws.delete_rows(idx)
-                return bot.reply_to(message, "🗑 Jadwal posting dibatalkan.")
-    except Exception as e: bot.reply_to(message, str(e))
+                bot.reply_to(message, f"🗑 Jadwal posting tanggal {post_date} berhasil dibatalkan.")
+                deleted = True
+                break
+                
+        if not deleted:
+            bot.reply_to(message, f"❌ Jadwal posting tanggal {post_date} tidak ditemukan.")
+    except Exception as e: bot.reply_to(message, f"Kesalahan sistem: {str(e)}")
 
 @bot.message_handler(commands=['rekapbulan'])
 def rekap_bulan(message, is_edit=False):
